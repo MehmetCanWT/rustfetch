@@ -1,413 +1,567 @@
-# RustFetch — Telemetry Modules Guide
+# 📦 RustFetch — Telemetry Modules & Customization Guide
 
-This document provides a comprehensive reference for all telemetry collectors and formatting modules available in **RustFetch**.
+<div align="center">
 
----
+![Rust](https://img.shields.io/badge/Language-Rust%202021-DEA584?style=for-the-badge&logo=rust)
+![Modules](https://img.shields.io/badge/Modules-27%20Telemetry%20Collectors-4D9375?style=for-the-badge)
+![Architecture](https://img.shields.io/badge/Architecture-Zero--Fork%20Kernel-61afef?style=for-the-badge)
+![Performance](https://img.shields.io/badge/Latency-%3C5ms%20Full%20Fetch-E5C07B?style=for-the-badge)
+![License](https://img.shields.io/badge/License-MIT-98c379?style=for-the-badge)
 
-## Table of Contents
+**A high-performance Linux system information fetcher powered by pure kernel virtual filesystem parsing.**
 
-- [Overview & Architecture](#overview--architecture)
-- [Module Configuration Reference](#module-configuration-reference)
-- [Custom Icons and Color Styling Guide](#custom-icons-and-color-styling-guide)
-- [Available Modules](#available-modules)
-  - [Hardware Telemetry](#hardware-telemetry)
-    - [cpu](#cpu)
-    - [temp](#temp)
-    - [gpu](#gpu)
-    - [memory](#memory)
-    - [swap](#swap)
-    - [disk](#disk)
-    - [battery](#battery)
-    - [display](#display)
-  - [System & Kernel](#system--kernel)
-    - [os](#os)
-    - [kernel](#kernel)
-    - [uptime](#uptime)
-    - [packages](#packages)
-    - [host](#host)
-    - [board](#board)
-    - [processes](#processes)
-  - [Desktop & Environment](#desktop--environment)
-    - [desktop](#desktop)
-    - [terminal](#terminal)
-    - [shell](#shell)
-    - [font](#font)
-    - [locale](#locale)
-  - [Network & Connectivity](#network--connectivity)
-    - [wifi](#wifi)
-    - [local_ip](#local_ip)
-  - [Audio & Multimedia](#audio--multimedia)
-    - [sound](#sound)
-    - [media](#media)
-  - [Layout & Formatting](#layout--formatting)
-    - [colors](#colors)
-    - [custom](#custom)
-    - [break](#break)
-- [Example Configuration](#example-configuration)
+[Quick Reference](#-master-telemetry-matrix) • [Configuration Syntax](#-configuration-syntax--attributes) • [Custom Icons Guide](#-custom-icons--dynamic-theming-guide) • [Module Catalog](#-detailed-module-catalog) • [Showcase Presets](#-showcase-presets)
+
+</div>
 
 ---
 
-## Overview & Architecture
+## ⚡ Zero-Fork Architecture
 
-RustFetch is built around a **zero-fork kernel telemetry architecture**:
-- **Zero Subprocesses**: Telemetry is parsed directly from Linux virtual filesystems (`/proc` and `/sys`) and libc system calls (`uname`, `statvfs`). Subprocesses like `lspci`, `xrandr`, `awk`, or `grep` are never spawned.
-- **TTL Disk Caching**: Heavy package manager scans are cached in `$XDG_CACHE_HOME/rustfetch/` with a 2-hour TTL.
-- **Microsecond Execution**: Most modules execute in **10 to 80 microseconds**, achieving full fetch runs in **~4–6 milliseconds**.
+Unlike traditional fetch scripts that spawn dozens of subshells (`bash -c`, `grep`, `awk`, `sed`, `cut`, `lspci`, `xrandr`), **RustFetch** gathers telemetry with zero process overhead:
+
+- 🔬 **Kernel Direct:** Reads directly from `/proc` and `/sys` virtual filesystems into memory buffers.
+- ⚡ **Native C Calls:** Invokes standard `libc` functions (`uname`, `statvfs`) directly via FFI.
+- 🚀 **Hardware EDID Parsing:** Inspects raw 128-byte EDID binary headers from sysfs DRM connectors without X11 or Wayland display server round-trips.
+- 🕒 **TTL Caching:** Aggregated package manager scans are cached under `$XDG_CACHE_HOME/rustfetch/` with a 2-hour TTL to eliminate disk I/O bottlenecks.
+- ⏱️ **Microsecond Latency:** Individual collectors execute in **10 µs to 80 µs**, completing a full system fetch in **~4–6 milliseconds**.
 
 ---
 
-## Module Configuration Reference
+## 📊 Master Telemetry Matrix
 
-Each module is defined in `~/.config/rustfetch/config.toml` under `[[modules]]`:
+| Icon | Module | Category | Primary Data Source | Progress Bar | Status |
+| :---: | :--- | :--- | :--- | :---: | :---: |
+| `` | [`os`](#os) | System | `/etc/os-release` | No | Enabled |
+| `` | [`host`](#host) | System | `/sys/devices/virtual/dmi/id/` | No | Enabled |
+| `` | [`board`](#board) | System | `/sys/devices/virtual/dmi/id/board_name` | No | Enabled |
+| `` | [`kernel`](#kernel) | System | `libc::uname` | No | Enabled |
+| `` | [`uptime`](#uptime) | System | `/proc/uptime` | No | Enabled |
+| `` | [`packages`](#packages) | System | Pure FS traversal (2h TTL cache) | No | Enabled |
+| `` | [`cpu`](#cpu) | Hardware | `/proc/cpuinfo` & `/sys/devices/system/cpu` | No | Enabled |
+| `󰾲` | [`gpu`](#gpu) | Hardware | `/sys/bus/pci/devices` & `pci.ids` | No | Enabled |
+| `` | [`memory`](#memory) | Hardware | `/proc/meminfo` | Yes | Enabled |
+| `󰓡` | [`swap`](#swap) | Hardware | `/proc/meminfo` | Yes | Enabled |
+| `` | [`disk`](#disk) | Hardware | `libc::statvfs` | Yes | Enabled |
+| `` | [`battery`](#battery) | Hardware | `/sys/class/power_supply/BAT*` | Yes | Enabled |
+| `` | [`temp`](#temp) | Hardware | `/sys/class/hwmon/` | No | Optional |
+| `󰍹` | [`display`](#display) | Hardware | Sysfs DRM & EDID Timing Descriptors | No | Optional |
+| `` | [`desktop`](#desktop) | Environment | `$XDG_CURRENT_DESKTOP`, Wayland/X11 sockets | No | Enabled |
+| `` | [`terminal`](#terminal) | Environment | `/proc/$PPID/stat` ancestry tree | No | Enabled |
+| `` | [`shell`](#shell) | Environment | `$SHELL` & binary inspection | No | Enabled |
+| `` | [`font`](#font) | Environment | `~/.config/gtk-3.0/settings.ini` | No | Enabled |
+| `` | [`locale`](#locale) | Environment | `$LC_ALL`, `$LC_MESSAGES`, `$LANG` | No | Enabled |
+| `󰖩` | [`wifi`](#wifi) | Network | Active sysfs link (`iw dev <iface> link`) | No | Optional |
+| `` | [`local_ip`](#local_ip) | Network | Local network interface query | No | Enabled |
+| `` | [`sound`](#sound) | Multimedia | WirePlumber (`wpctl`) / PulseAudio | Yes | Optional |
+| `󰝚` | [`media`](#media) | Multimedia | MPRIS D-Bus (`playerctl metadata`) | No | Optional |
+| `` | [`processes`](#processes) | System | `/proc/loadavg` & PID count | No | Optional |
+| `●` | [`colors`](#colors) | Layout | ANSI 16 / Dynamic Image TrueColor | — | Enabled |
+| `` | [`custom`](#custom) | Layout | Static or user-defined text | No | Optional |
+| ` ` | [`break`](#break) | Layout | Blank vertical spacing row | — | Optional |
+
+---
+
+## 🛠️ Configuration Syntax & Attributes
+
+Every telemetry module is declared as an element of the `[[modules]]` table in `~/.config/rustfetch/config.toml`:
 
 ```toml
 [[modules]]
-name = "os"                 # (Required) Module identifier
-text = "System"             # (Optional) Custom label text (alias: label, title, key)
-logo = ">_"                 # (Optional) Custom icon / symbol (alias: icon, symbol, prefix)
-color = "cyan"              # (Optional) Label/icon color: name or hex (#7aa2f7)
-format = "{value}"          # (Optional) Output format string ({value} or {})
-bar = true                  # (Optional) Enable visual progress bar (percentage modules)
-bar_width = 10              # (Optional) Progress bar width in characters (default: 10)
+name = "os"                 # (Required) Unique module identifier
+text = "Operating System"   # (Optional) Custom label text (Aliases: label, title, key)
+logo = ">_"                 # (Optional) Custom prefix icon (Aliases: icon, symbol, prefix)
+color = "cyan"              # (Optional) Label/icon accent color (Name or Hex #7aa2f7)
+format = "{value}"          # (Optional) Custom format template
+bar = true                  # (Optional) Render visual bar (for percentage modules)
+bar_width = 10              # (Optional) Progress bar character width (default: 10)
 ```
 
-> 💡 **Convenient Aliases:**
-> - Both `text = "..."` and `label = "..."` work interchangeably.
-> - `logo = "..."`, `icon = "..."`, and `symbol = "..."` all configure the module's prefix icon.
+### Supported Module Attributes
+
+| Field | Type | Default | Description |
+| :--- | :---: | :---: | :--- |
+| `name` | `string` | *(Required)* | The module identifier (e.g. `"memory"`, `"cpu"`). |
+| `text` / `label` | `string` | Module default | Left-side label text displayed before the separator. |
+| `logo` / `icon` | `string` | Built-in glyph | Prefix icon displayed before the label text. |
+| `color` | `string` | `"auto"` | Terminal ANSI name (`"red"`, `"green"`, `"cyan"`, `"magenta"`, etc.) or Hex code (`"#7aa2f7"`). |
+| `format` | `string` | `"{value}"` | Value formatting template. Supports `{value}` or `{}`. |
+| `bar` | `boolean` | `false` | When `true`, appends a visual progress meter `[■■■■■-----]` on percentage-based collectors. |
+| `bar_width` | `integer` | `10` | The character width of the progress bar. |
+| `value` | `string` | `None` | Static text value (used specifically by the `custom` module). |
+
+> [!TIP]
+> **Serde Aliases for Total Freedom:**
+> - You can use `text`, `label`, `title`, or `key` interchangeably.
+> - You can use `logo`, `icon`, `symbol`, or `prefix` interchangeably.
+> - RustFetch parses all of them seamlessly without configuration errors.
 
 ---
 
-## Custom Icons and Color Styling Guide
+## 🎨 Custom Icons & Dynamic Theming Guide
 
-In RustFetch, you can assign any custom character, ASCII string, or Nerd Font glyph as a module prefix using `logo` (or `icon`). However, whether an icon **dynamically adapts to your theme's color palette** depends on the character format:
+RustFetch allows you to customize module prefixes with any character: ASCII symbols, Nerd Font glyphs, or emojis. Understanding how the terminal renders each type ensures a cohesive visual theme:
 
-### 1. Color-Adaptive Icons (Monochrome / Vector)
-These characters belong to the terminal's monochrome vector glyph sets. They are rendered directly through ANSI TrueColor (`\x1b[38;2;r;g;bm`) escape sequences. When `auto_color = true` or when `--color` is specified, **they immediately inherit the active accent color**:
+### 1. Vector Glyphs & Nerd Fonts (Dynamic Palette)
+```toml
+logo = ""   # Linux icon
+logo = ""   # CPU chip
+logo = ""   # Memory RAM
+logo = ""   # Clock uptime
+```
+- **How they render:** These characters are vector outlines supplied by fonts like *JetBrains Mono Nerd Font*, *FiraCode Nerd Font*, or *MesloLGS*.
+- **Color behavior:** They accept ANSI TrueColor escape sequences (`\x1b[38;2;R;G;Bm`).
+- **Dynamic Theming:** When using `auto_color = true` or loading image palettes, vector glyphs automatically tint to match your wallpaper's dominant accent color.
 
-- **Text & ASCII Symbols:**
-  - `logo = ">_"`
-  - `logo = "::"`
-  - `logo = "->"`
-  - `logo = "[$]"`
-  - `logo = "=>"`
-  - `logo = "#"`
-- **Nerd Font & FontAwesome Glyphs:**
-  - `logo = ""` (Linux)
-  - `logo = ""` (CPU)
-  - `logo = ""` (RAM / Memory)
-  - `logo = ""` (Laptop / Host)
-  - `logo = ""` (Desktop)
-  - `logo = ""` (Terminal / Shell)
-  - `logo = ""` (Uptime / Clock)
-  - `logo = ""` (Packages)
-  - `logo = ""` (Kernel / Settings)
-  - `logo = ""` (Network / Local IP)
-- **Unicode Geometric Shapes:**
-  - `logo = "●"`, `logo = "■"`, `logo = "▲"`, `logo = "◆"`, `logo = "⚡"`
+### 2. ASCII & Minimalist Glyphs (Universal & Bulletproof)
+```toml
+logo = ">_"   # Terminal prompt
+logo = "::"   # Namespace delimiter
+logo = "->"   # Arrow indicator
+logo = "#"    # Hash anchor
+```
+- **How they render:** Standard 7-bit ASCII characters available on 100% of computers and TTY consoles without special fonts.
+- **Color behavior:** Dynamically tinted by the active theme palette.
+- **Recommendation:** Perfect for minimalist configs or environments where Nerd Fonts are not installed.
 
-### 2. Fixed-Color Glyphs (Multi-Color Emojis)
-These characters originate from the operating system's color emoji libraries (Noto Color Emoji, Apple Color Emoji, Twemoji, etc.) as embedded bitmap or SVG pictures.
+### 3. Bitmap Color Emojis (Fixed OS Colors)
+```toml
+logo = "💻"   # Laptop
+logo = "🐧"   # Penguin
+logo = "📦"   # Package
+logo = "⚡"   # Lightning bolt
+```
+- **How they render:** These are pre-rendered bitmap images embedded in operating system emoji fonts (e.g. *Noto Color Emoji*, *Apple Color Emoji*).
+- **Color behavior:** Terminal escape sequences **cannot** re-color or tint bitmap emojis. A blue penguin `🐧` or yellow lightning `⚡` remains its fixed color regardless of your theme or image palette.
 
-- **Examples:** `💻`, `🐧`, `📦`, `🕒`, `📁`, `🚀`, `💾`, `🔊`
-- **Why they do not adapt:** Terminal ANSI color codes cannot tint multi-color bitmap emojis. Regardless of the theme or accent color, they will always render in their fixed predefined colors and will not match dynamic themes.
-
-> 🎯 **Recommendation:** For a seamless, cohesive aesthetic that dynamically adapts to image colors (`auto_color = true`), choose ASCII symbols (`>_`, `::`) or vector Nerd Font glyphs.
+> [!NOTE]
+> **Aesthetic Advice:** If you want your fetch output to dynamically match your desktop wallpapers (`auto_color = true`), choose **Vector Nerd Font glyphs** or **ASCII characters**.
 
 ---
 
-## Available Modules
+## 📂 Detailed Module Catalog
 
-### Hardware Telemetry
+### ⚡ Hardware & Sensors
 
 #### `cpu`
-- **Description:** Reports the CPU processor model name, total physical/logical cores, and maximum clock frequency.
-- **Icon:** ``
-- **Data Source:** Direct parsing of `/proc/cpuinfo`.
-- **Formatting:** Cleans redundant vendor prefixes (e.g. `Intel(R) Core(TM)`, `11th Gen`, `with Radeon Graphics`).
-- **Example Output:** `11th Gen Intel(R) Core(TM) i5-11400H @ 2.70GHz (12)`
-
-#### `temp`
-- **Description:** Detects current processor thermal temperature in degrees Celsius (°C).
-- **Icon:** ``
-- **Data Source:** Iterates `/sys/class/hwmon/hwmon*/temp*_input` matching thermal drivers (`coretemp`, `k10temp`, `zenpower`, `cpu_thermal`), with fallback to `/sys/class/thermal/thermal_zone*`.
-- **Example Output:** `52°C`
+Directly parses `/proc/cpuinfo` to detect processor model, logical/physical core counts, and maximum clock speeds while stripping redundant marketing noise (`(R)`, `(TM)`, `with Radeon Graphics`).
+```toml
+[[modules]]
+name = "cpu"
+text = "Processor"
+logo = ""
+```
+```text
+ Processor : 11th Gen Intel Core i5-11400H @ 2.70GHz (12)
+```
 
 #### `gpu`
-- **Description:** Identifies dedicated and integrated graphics cards.
-- **Icon:** `󰾲`
-- **Data Source:** Pure filesystem scan of `/sys/bus/pci/devices/*/class` (matching VGA display class `0x030000`, `0x038000`, `0x030200`). Vendor and device IDs are resolved directly via `/usr/share/hwdata/pci.ids` without spawning `lspci`.
-- **Example Output:** `NVIDIA GeForce RTX 3050 Mobile, Intel UHD Graphics`
+Zero-subprocess graphics detection. Traverses `/sys/bus/pci/devices/*/class` to locate VGA display controllers (`0x030000`, `0x038000`, `0x030200`) and resolves vendor and model names directly from `/usr/share/hwdata/pci.ids` in microsecond time.
+```toml
+[[modules]]
+name = "gpu"
+logo = "󰾲"
+```
+```text
+󰾲 GPU : NVIDIA GeForce RTX 3050 Mobile, Intel UHD Graphics
+```
 
 #### `memory`
-- **Description:** Reports used and total system RAM with percentage calculation. Supports visual progress bars.
-- **Icon:** ``
-- **Data Source:** Direct parsing of `MemTotal`, `MemAvailable`, `MemFree`, `Buffers`, and `Cached` from `/proc/meminfo`.
-- **Bar Support:** Yes (`bar = true`, `bar_width = 10`).
-- **Example Output:** `8.1 GiB / 15.4 GiB (52%) [■■■■■-----]`
+Calculates accurate RAM consumption (`MemTotal`, `MemAvailable`, `Buffers`, `Cached`) directly from `/proc/meminfo`. Supports inline progress bar meters.
+```toml
+[[modules]]
+name = "memory"
+text = "Memory"
+logo = ""
+bar = true
+bar_width = 10
+```
+```text
+ Memory : 9.8 GiB / 15.4 GiB (63%) [■■■■■■----]
+```
 
 #### `swap`
-- **Description:** Reports used and total swap memory. Automatically hidden if no swap space is configured.
-- **Icon:** `󰓡`
-- **Data Source:** `SwapTotal` and `SwapFree` from `/proc/meminfo`.
-- **Bar Support:** Yes (`bar = true`).
-- **Example Output:** `1.5 GiB / 8.0 GiB (18%)`
+Monitors swap file or zram partition usage from `/proc/meminfo`. If no swap is enabled on the host, the module cleanly and silently hides itself without cluttering output.
+```toml
+[[modules]]
+name = "swap"
+logo = "󰓡"
+bar = true
+```
+```text
+󰓡 Swap : 866.3 MiB / 8.0 GiB (10%) [■---------]
+```
 
 #### `disk`
-- **Description:** Filesystem disk usage and capacity for root (`/`) or mounted partitions.
-- **Icon:** ``
-- **Data Source:** `libc::statvfs` on root `/` (or configured mount point).
-- **Bar Support:** Yes (`bar = true`).
-- **Example Output:** `313.3 GiB / 928.9 GiB (34%) [■■■-------]`
+Inspects partition space and usage using pure `libc::statvfs` calls on the root filesystem `/` or specified mount point.
+```toml
+[[modules]]
+name = "disk"
+text = "Disk (/)"
+logo = ""
+bar = true
+bar_width = 12
+```
+```text
+ Disk (/) : 313.5 GiB / 928.9 GiB (34%) [■■■■--------]
+```
+
+#### `temp`
+Discovers system thermal sensors by scanning `/sys/class/hwmon/hwmon*/temp*_input` against known CPU thermal drivers (`coretemp`, `k10temp`, `zenpower`, `cpu_thermal`), falling back to ACPI thermal zones.
+```toml
+[[modules]]
+name = "temp"
+logo = ""
+```
+```text
+ Temperature : 48°C
+```
 
 #### `battery`
-- **Description:** Reports battery charge percentage, charging state (`Charging`, `Discharging`, `Full`), and AC power connection status.
-- **Icon:** ``
-- **Data Source:** `/sys/class/power_supply/BAT*/capacity` and `status`.
-- **Bar Support:** Yes (`bar = true`, with inverted color thresholds: green at high capacity).
-- **Example Output:** `100% [Full] [AC Connected]`
+Inspects `/sys/class/power_supply/BAT*/capacity` and status. Features intelligent reversed progress bar thresholds (green at high percentage, yellow at medium, red when low).
+```toml
+[[modules]]
+name = "battery"
+text = "Battery"
+logo = ""
+```
+```text
+ Battery : 100% [Full] [AC Connected]
+```
 
 #### `display`
-- **Description:** Detects connected external and internal monitors, active screen resolutions, and refresh rates.
-- **Icon:** `󰍹`
-- **Data Source:** Pure Rust parsing of sysfs DRM connectors (`/sys/class/drm/card*-*/modes`) and 128-byte EDID Detailed Timing Descriptors (`/sys/class/drm/card*-*/edid`) to compute pixel clock and refresh rate (e.g. 144Hz) without `xrandr`.
-- **Example Output:** `1920x1080 @ 144Hz`
+Pure Rust sysfs DRM connector parsing (`/sys/class/drm/card*-*/modes`) and 128-byte EDID binary header parsing to calculate monitor names, physical resolutions, and refresh rates (e.g. `144Hz`) without `xrandr`.
+```toml
+[[modules]]
+name = "display"
+logo = "󰍹"
+```
+```text
+󰍹 Display : 1920x1080 @ 144Hz (eDP-1)
+```
 
 ---
 
-### System & Kernel
+### 🐧 System & Kernel
 
 #### `os`
-- **Description:** Operating system distribution name, release version, and machine architecture.
-- **Icon:** ``
-- **Data Source:** `/etc/os-release` (`PRETTY_NAME` or `NAME` + `VERSION_ID`).
-- **Example Output:** `Fedora Linux 41 (Workstation Edition) x86_64`
+Inspects `/etc/os-release` to report the official distribution name, version, and architecture.
+```toml
+[[modules]]
+name = "os"
+logo = ""
+```
+```text
+ OS : Fedora Linux 44 (KDE Plasma Desktop Edition)
+```
 
 #### `kernel`
-- **Description:** Running Linux kernel release version and build architecture.
-- **Icon:** ``
-- **Data Source:** System call `libc::uname`.
-- **Example Output:** `6.13.1-200.fc41.x86_64`
+Calls `libc::uname` to read the active Linux kernel release version.
+```toml
+[[modules]]
+name = "kernel"
+logo = ""
+```
+```text
+ Kernel : 7.2.7-200.fc44.x86_64
+```
 
 #### `uptime`
-- **Description:** Total system uptime formatted human-readably in days, hours, and minutes.
-- **Icon:** ``
-- **Data Source:** Direct reading of `/proc/uptime`.
-- **Example Output:** `5 hours, 12 mins`
+Parses system uptime seconds from `/proc/uptime` and formats into natural human-readable units (days, hours, minutes).
+```toml
+[[modules]]
+name = "uptime"
+logo = ""
+```
+```text
+ Uptime : 8 hours, 24 mins
+```
 
 #### `packages`
-- **Description:** Aggregated count of installed software packages across package managers.
-- **Icon:** `󰏖`
-- **Data Source:** Pure filesystem inspection with 2-hour TTL cache:
-  - `pacman`: `/var/lib/pacman/local` directory entries
-  - `dpkg`: `/var/lib/dpkg/status`
-  - `rpm`: SQLite `/var/lib/rpm/rpmdb.sqlite` or BDB `/var/lib/rpm/Packages`
-  - `flatpak`: User and system `/var/lib/flatpak/app/`
-  - `apk`: Alpine `/lib/apk/db/installed`
-  - `xbps`: Void `/var/db/xbps/pkgdb-0.38.cpub`
-  - `nix`: NixOS `/nix/var/nix/profiles/default`
-  - `emerge`: Gentoo `/var/db/pkg`
-  - `snap`: `/var/lib/snapd/snaps`
-- **Example Output:** `2418 (rpm), 12 (flatpak)`
+High-speed package counting across all installed package managers. Results are persisted in `$XDG_CACHE_HOME/rustfetch/` with a 2-hour TTL cache:
+- `pacman` (`/var/lib/pacman/local/`)
+- `dpkg` (`/var/lib/dpkg/status`)
+- `rpm` (SQLite `/var/lib/rpm/rpmdb.sqlite` or BDB `/var/lib/rpm/Packages`)
+- `flatpak` (`/var/lib/flatpak/app/`)
+- `apk` (Alpine `/lib/apk/db/installed`)
+- `xbps` (Void `/var/db/xbps/pkgdb-0.38.cpub`)
+- `nix` (`/nix/var/nix/profiles/default`)
+- `emerge` (`/var/db/pkg`)
+- `snap` (`/var/lib/snapd/snaps`)
+```toml
+[[modules]]
+name = "packages"
+logo = ""
+```
+```text
+ Packages : 4 (flatpak), 2728 (rpm)
+```
 
-#### `host`
-- **Description:** Computer manufacturer, product model, and chassis name.
-- **Icon:** `󰌢`
-- **Data Source:** DMI sysfs files (`/sys/devices/virtual/dmi/id/product_name` and `sys_vendor`).
-- **Example Output:** `Acer Nitro AN515-57`
+#### `host` & `board`
+Reads DMI hardware table data from `/sys/devices/virtual/dmi/id/product_name` and `board_name`.
+```toml
+[[modules]]
+name = "host"
+logo = ""
 
-#### `board`
-- **Description:** Motherboard model name.
-- **Icon:** `󰌢`
-- **Data Source:** `/sys/devices/virtual/dmi/id/board_name`.
-- **Example Output:** `TGL Scala_TLS`
+[[modules]]
+name = "board"
+logo = ""
+```
+```text
+ Host  : Acer Nitro AN515-57
+ Board : TGL Scala_TLS
+```
 
 #### `processes`
-- **Description:** Total active process count and 1-minute load average.
-- **Icon:** ``
-- **Data Source:** Parsed directly from `/proc/loadavg` and `/proc` PID scan.
-- **Example Output:** `342 (load: 0.42)`
+Reads `/proc/loadavg` to display the total running process count alongside the 1-minute CPU load average.
+```toml
+[[modules]]
+name = "processes"
+logo = ""
+```
+```text
+ Processes : 342 (load: 0.42)
+```
 
 ---
 
-### Desktop & Environment
+### 🖥️ Desktop & Environment
 
 #### `desktop`
-- **Description:** Desktop Environment (DE) and active Window Manager (WM).
-- **Icon:** ``
-- **Data Source:** Environment variables (`$XDG_CURRENT_DESKTOP`, `$DESKTOP_SESSION`) and Wayland/X11 socket inspection.
-- **Example Output:** `GNOME 47.2 (Wayland)` or `KDE (KWin Wayland)`
+Resolves active Desktop Environment (`$XDG_CURRENT_DESKTOP`, `$DESKTOP_SESSION`) and Window Manager (Wayland socket / X11 root window inspection).
+```toml
+[[modules]]
+name = "desktop"
+logo = ""
+```
+```text
+ Desktop : KDE (KWin Wayland)
+```
 
 #### `terminal`
-- **Description:** Currently running terminal emulator application name.
-- **Icon:** ``
-- **Data Source:** Inspects parent process hierarchy through `/proc/$PPID/stat` up the process tree, with fallback to `$TERM_PROGRAM` and `$TERM`.
-- **Example Output:** `alacritty`, `kitty`, `ghostty`, or `wezterm`
+Ascends the parent process tree via `/proc/$PPID/stat` to reliably pinpoint the true host terminal emulator, handling nested subshells and multiplexers gracefully.
+```toml
+[[modules]]
+name = "terminal"
+logo = ""
+```
+```text
+ Terminal : ghostty
+```
 
 #### `shell`
-- **Description:** User login shell name and version.
-- **Icon:** ``
-- **Data Source:** Environment variable `$SHELL`.
-- **Example Output:** `bash 5.2.32` or `zsh 5.9`
+Identifies the user's login shell from `$SHELL` and queries its version.
+```toml
+[[modules]]
+name = "shell"
+logo = ""
+```
+```text
+ Shell : bash 5.2.32
+```
 
 #### `font`
-- **Description:** System default GTK or desktop interface font and size.
-- **Icon:** ``
-- **Data Source:** Parsed from `~/.config/gtk-3.0/settings.ini` or desktop font settings.
-- **Example Output:** `Noto Sans, 10 [GTK]`
+Discovers system GTK or interface font configuration from `~/.config/gtk-3.0/settings.ini` or desktop configuration keys.
+```toml
+[[modules]]
+name = "font"
+logo = ""
+```
+```text
+ Font : Noto Sans, 10 [GTK]
+```
 
 #### `locale`
-- **Description:** System language and character encoding locale.
-- **Icon:** ``
-- **Data Source:** `$LC_ALL`, `$LC_MESSAGES`, or `$LANG`.
-- **Example Output:** `en_US.UTF-8` or `tr_TR.UTF-8`
+Identifies active system language and character encoding from environment variables (`$LC_ALL`, `$LC_MESSAGES`, `$LANG`).
+```toml
+[[modules]]
+name = "locale"
+logo = ""
+```
+```text
+ Locale : tr_TR.UTF-8
+```
 
 ---
 
-### Network & Connectivity
+### 🌐 Network & Connectivity
 
 #### `wifi`
-- **Description:** Wireless network interface SSID and signal quality percentage.
-- **Icon:** `󰖩`
-- **Data Source:** Active wireless interface link status via `iw dev <iface> link` or `iwgetid -r` (reads current connection state without initiating a slow air scan).
-- **Example Output:** `MyHomeNetwork (70dBm - 60%)`
+Queries the active wireless network SSID and signal quality (`iw dev <iface> link`) without initiating costly network scans.
+```toml
+[[modules]]
+name = "wifi"
+logo = "󰖩"
+```
+```text
+󰖩 Wi-Fi : HomeNetwork (70dBm - 60%)
+```
 
 #### `local_ip`
-- **Description:** Private IPv4 address assigned to the primary active network interface.
-- **Icon:** `󰩟`
-- **Data Source:** Network interface query.
-- **Example Output:** `192.168.1.150`
+Detects the private IPv4 address assigned to the machine's primary active routing interface.
+```toml
+[[modules]]
+name = "local_ip"
+logo = ""
+```
+```text
+ Local IP : 192.168.1.200
+```
 
 ---
 
-### Audio & Multimedia
+### 🎵 Audio & Multimedia
 
 #### `sound`
-- **Description:** Default audio sink volume percentage and mute status.
-- **Icon:** ``
-- **Data Source:** WirePlumber (`wpctl get-volume @DEFAULT_AUDIO_SINK@`) with fallback to PulseAudio or `/proc/asound/cards`.
-- **Example Output:** `100%` or `Muted`
+Reads volume percentage and mute status from WirePlumber (`wpctl`) or PulseAudio.
+```toml
+[[modules]]
+name = "sound"
+logo = ""
+bar = true
+```
+```text
+ Sound : 100% [■■■■■■■■■■]
+```
 
 #### `media`
-- **Description:** Currently active media player playback track (Artist - Title).
-- **Icon:** `󰎆`
-- **Data Source:** MPRIS D-Bus interface via `playerctl metadata`.
-- **Performance Note:** **Disabled by default**. The media collector only runs when explicitly declared in `[[modules]]` in `config.toml`, ensuring zero overhead during standard terminal opens.
-- **Example Output:** `Daft Punk - Around the World`
+Connects to MPRIS D-Bus via `playerctl metadata` to report the currently playing track.
+> [!NOTE]
+> **Zero Overhead:** This module is completely disabled unless explicitly declared in your `config.toml`, ensuring default runs stay below 5ms.
+```toml
+[[modules]]
+name = "media"
+logo = "󰝚"
+```
+```text
+󰝚 Media : Daft Punk - Around the World
+```
 
 ---
 
-### Layout & Formatting
+### 🎨 Layout & Formatting
 
 #### `colors`
-- **Description:** Terminal 8- or 16-color palette test strip. Supports both standard terminal ANSI colors and dynamic TrueColor image palette extraction.
-- **Icon:** None
-- **Configuration Options:**
-  - `symbol = "●"`: Palette symbol (e.g. circles `●`, squares `■`, or hashes `#`).
+Renders an ANSI color palette preview test strip. Supports both standard terminal colors and dynamic TrueColor image palette extraction.
+```toml
+[[modules]]
+name = "colors"
+```
+- **Configuration under `[general.colors]`**:
+  - `symbol = "●"`: Palette symbol (circles `●`, squares `■`, or hashes `#`).
   - `block = true`: Renders dense solid background blocks (`███`).
-  - `image_palette = true` (Default: `true`): When an image is displayed and `auto_color = true`, RustFetch automatically extracts the 16 primary color tones from the image and renders the palette circles using the image's vibrant colors! When no image is displayed, it falls back to the terminal's 16 ANSI system colors.
-- **Example Output:** `● ● ● ● ● ● ● ●`
+  - `image_palette = true`: When an image is rendered with `auto_color = true`, RustFetch clusters the image's top 16 color tones using Euclidean distance and renders the palette with the image's vibrant colors!
 
 #### `custom`
-- **Description:** Arbitrary static or dynamically formatted text line with custom label and color.
-- **Configuration Options:**
-  - `label`: Left-side label text.
-  - `value`: Right-side value text.
-  - `color`: Accent color.
-- **Example:**
-  ```toml
-  [[modules]]
-  name = "custom"
-  label = "Host"
-  value = "Production Workstation"
-  color = "magenta"
-  ```
+Inserts arbitrary user text, annotations, or environment variables.
+```toml
+[[modules]]
+name = "custom"
+text = "Role"
+value = "Production Server"
+logo = ">_"
+color = "magenta"
+```
+```text
+>_ Role : Production Server
+```
 
 #### `break`
-- **Description:** Inserts an empty blank spacing line between module sections for visual balance.
-- **Configuration Options:**
-  ```toml
-  [[modules]]
-  name = "break"
-  ```
+Inserts a clean, empty spacer row between sections to visually balance the layout.
+```toml
+[[modules]]
+name = "break"
+```
 
 ---
 
-## Example Configuration
+## 🎨 Showcase Presets
 
-Here is a full `~/.config/rustfetch/config.toml` utilizing modules with custom formatting and progress bars:
-
+### 1. Minimalist Hacker (`>_` ASCII Style)
 ```toml
 [general]
-separator = ":"
-padding = 1
-center = true
+separator = " :"
+center = false
 icons = true
-border = false
-
-[general.colors]
-enabled = true
-symbol = "●"
-block = false
-
-[general.logo]
-enabled = true
-distro = "auto"
-protocol = "auto"
 
 [[modules]]
 name = "os"
-label = "OS"
+text = "os"
+logo = ">_"
 
 [[modules]]
 name = "kernel"
-label = "Kernel"
+text = "kernel"
+logo = ">_"
 
 [[modules]]
 name = "uptime"
-label = "Uptime"
-
-[[modules]]
-name = "packages"
-label = "Packages"
-
-[[modules]]
-name = "break"
-
-[[modules]]
-name = "display"
-label = "Display"
+text = "uptime"
+logo = ">_"
 
 [[modules]]
 name = "cpu"
-label = "CPU"
-
-[[modules]]
-name = "gpu"
-label = "GPU"
+text = "cpu"
+logo = ">_"
 
 [[modules]]
 name = "memory"
-label = "Memory"
+text = "ram"
+logo = ">_"
 bar = true
-bar_width = 10
+bar_width = 8
 
 [[modules]]
-name = "disk"
-label = "Disk (/)"
-bar = true
-bar_width = 10
+name = "colors"
+```
 
+### 2. Comprehensive Hardware Dashboard
+```toml
+[general]
+separator = " :"
+padding = 2
+border = true
+center = true
+
+[general.colors]
+enabled = true
+symbol = "■"
+image_palette = true
+
+[[modules]]
+name = "os"
+[[modules]]
+name = "kernel"
+[[modules]]
+name = "uptime"
 [[modules]]
 name = "break"
-
+[[modules]]
+name = "cpu"
+[[modules]]
+name = "gpu"
+[[modules]]
+name = "temp"
+[[modules]]
+name = "memory"
+bar = true
+bar_width = 12
+[[modules]]
+name = "swap"
+bar = true
+[[modules]]
+name = "disk"
+bar = true
+bar_width = 12
+[[modules]]
+name = "battery"
+[[modules]]
+name = "break"
 [[modules]]
 name = "wifi"
-label = "Wi-Fi"
-
 [[modules]]
-name = "processes"
-label = "Processes"
-
+name = "local_ip"
 [[modules]]
 name = "colors"
 ```

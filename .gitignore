@@ -19,7 +19,8 @@ Cargo.lock.orig
 .DS_Store
 Thumbs.db
 
-# Internal Agent & Skill state
+# Internal Agent & Planning state
+PLAN.md
 .agents/
 skills-lock.json
 

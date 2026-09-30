@@ -24,34 +24,31 @@ impl Logo {
     }
 
     /// Return the logo lines pre-colored with ANSI codes.
+    /// Carries the active color across lines for multi-colored logos.
     pub fn colored_lines(&self) -> Vec<String> {
+        let mut active_color = self.colors.first().copied().unwrap_or(self.color);
         self.lines
             .iter()
             .map(|line| {
                 let mut out = String::with_capacity(line.len() + 32);
+                out.push_str(active_color);
                 let mut chars = line.chars().peekable();
-                let mut has_color = false;
                 while let Some(c) = chars.next() {
                     if c == '$' {
                         if let Some(&next) = chars.peek() {
                             if let Some(digit) = next.to_digit(10) {
                                 chars.next();
                                 let idx = (digit as usize).saturating_sub(1);
-                                let col = self.colors.get(idx).copied().unwrap_or(self.color);
-                                out.push_str(col);
-                                has_color = true;
+                                active_color = self.colors.get(idx).copied().unwrap_or(self.color);
+                                out.push_str(active_color);
                                 continue;
                             }
                         }
                     }
                     out.push(c);
                 }
-                if has_color {
-                    out.push_str(RESET);
-                    out
-                } else {
-                    format!("{}{}{}", self.color, line, RESET)
-                }
+                out.push_str(RESET);
+                out
             })
             .collect()
     }
@@ -220,7 +217,7 @@ fn debian() -> Logo {
     Logo {
         lines,
         color: "\x1b[31m",
-        colors: vec!["\x1b[31m", "\x1b[37m"],
+        colors: vec!["\x1b[37m", "\x1b[31m"],
         width,
     }
 }
@@ -373,7 +370,7 @@ fn alpine() -> Logo {
     Logo {
         lines,
         color: "\x1b[34m",
-        colors: vec!["\x1b[34m", "\x1b[37m"],
+        colors: vec!["\x1b[34m"],
         width,
     }
 }
@@ -433,7 +430,7 @@ fn gentoo() -> Logo {
     Logo {
         lines,
         color: "\x1b[35m",
-        colors: vec!["\x1b[35m", "\x1b[37m"],
+        colors: vec!["\x1b[37m", "\x1b[35m"],
         width,
     }
 }
@@ -466,7 +463,7 @@ fn nixos() -> Logo {
         lines,
         color: "\x1b[36m",
         colors: vec![
-            "\x1b[34m", "\x1b[36m", "\x1b[94m", "\x1b[96m", "\x1b[34m", "\x1b[36m",
+            "\x1b[94m", "\x1b[36m", "\x1b[34m", "\x1b[96m", "\x1b[34m", "\x1b[94m",
         ],
         width,
     }
@@ -501,7 +498,7 @@ fn opensuse() -> Logo {
     Logo {
         lines,
         color: "\x1b[32m",
-        colors: vec!["\x1b[32m", "\x1b[37m"],
+        colors: vec!["\x1b[32m"],
         width,
     }
 }
@@ -623,7 +620,7 @@ fn artix() -> Logo {
     Logo {
         lines,
         color: "\x1b[36m",
-        colors: vec!["\x1b[36m", "\x1b[37m"],
+        colors: vec!["\x1b[36m"],
         width,
     }
 }
@@ -653,7 +650,7 @@ fn redhat() -> Logo {
     Logo {
         lines,
         color: "\x1b[31m",
-        colors: vec!["\x1b[31m", "\x1b[37m"],
+        colors: vec!["\x1b[31m"],
         width,
     }
 }
@@ -747,7 +744,7 @@ fn centos() -> Logo {
     Logo {
         lines,
         color: "\x1b[31m",
-        colors: vec!["\x1b[31m", "\x1b[32m", "\x1b[34m", "\x1b[35m", "\x1b[37m"],
+        colors: vec!["\x1b[31m", "\x1b[32m", "\x1b[34m", "\x1b[35m"],
         width,
     }
 }
@@ -776,7 +773,7 @@ fn zorin() -> Logo {
     Logo {
         lines,
         color: "\x1b[36m",
-        colors: vec!["\x1b[36m", "\x1b[37m"],
+        colors: vec!["\x1b[36m"],
         width,
     }
 }

@@ -9,7 +9,7 @@ use rustfetch_core::{default_icon_for_module, detect_all, Module};
 use serde::Serialize;
 use std::io::Write;
 
-use layout::{color_code, InfoLine, LogoBlock};
+use layout::{color_code, InfoLine, LogoBlock, BOLD, DIM, RESET};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -50,6 +50,39 @@ struct Cli {
 
     #[arg(long)]
     live: bool,
+
+    #[arg(long = "3d")]
+    three_d: bool,
+
+    #[arg(long, value_name = "FLOAT")]
+    speed: Option<f32>,
+
+    #[arg(long)]
+    rotate_x: bool,
+
+    #[arg(long)]
+    rotate_y: bool,
+
+    #[arg(long, value_name = "FLOAT")]
+    size: Option<f32>,
+
+    #[arg(long, value_name = "FLOAT")]
+    depth: Option<f32>,
+
+    #[arg(long, value_name = "MODE")]
+    shading_mode: Option<String>,
+
+    #[arg(long, value_name = "CHARS")]
+    shading: Option<String>,
+
+    #[arg(long, value_name = "COLS", alias = "image-width-cols")]
+    width: Option<usize>,
+
+    #[arg(long, value_name = "ROWS")]
+    height: Option<usize>,
+
+    #[arg(long, value_name = "N")]
+    frames: Option<usize>,
 
     #[arg(long)]
     json: bool,
@@ -179,10 +212,16 @@ fn main() {
             .unzip()
     };
 
+    let is_3d = cli.three_d
+        || config.general.logo.three_d.enabled
+        || config.general.three_d.unwrap_or(false);
+
     if cli.benchmark {
         run_benchmark(&modules);
     } else if cli.json {
         run_json(&config, &modules, &configs);
+    } else if is_3d {
+        run_3d(&config, &cli, &modules, &configs);
     } else if cli.live {
         run_live(&config, &cli, &modules, &configs);
     } else {
@@ -234,71 +273,7 @@ fn run_once(
         None
     };
 
-    let results = detect_all(modules);
-
-    let info_lines: Vec<InfoLine> = results
-        .into_iter()
-        .zip(configs.iter())
-        .filter_map(|(result, mc)| {
-            let info = result?;
-            let label = if mc.name == "break" {
-                String::new()
-            } else if mc.name == "custom" {
-                mc.label.clone().unwrap_or_default()
-            } else {
-                mc.label.clone().unwrap_or(info.label)
-            };
-
-            let mut value = if mc.name == "break" {
-                String::new()
-            } else if mc.name == "custom" {
-                mc.value.clone().unwrap_or_default()
-            } else {
-                info.value
-            };
-
-            if let Some(fmt) = &mc.format {
-                value = fmt.replace("{value}", &value).replace("{}", &value);
-            }
-
-            let icon = if config.general.icons && mc.name != "break" {
-                mc.icon
-                    .clone()
-                    .or_else(|| default_icon_for_module(&mc.name).map(str::to_string))
-            } else {
-                None
-            };
-
-            if mc.bar.unwrap_or(false) && !value.is_empty() {
-                if let Some(pct) = extract_percentage(&value) {
-                    let width = mc.bar_width.unwrap_or(10);
-                    let invert = mc.name == "battery";
-                    let bar = format_bar(pct, width, true, invert);
-                    if value.contains('%') {
-                        if let Some(pct_idx) = value.rfind('(') {
-                            value = format!("{}{} {}", &value[..pct_idx], bar, &value[pct_idx..]);
-                        } else {
-                            value = format!("{} {}", value, bar);
-                        }
-                    } else {
-                        value = format!("{} {} ({}%)", value, bar, pct);
-                    }
-                }
-            }
-
-            let color_str = dynamic_color
-                .as_deref()
-                .or(mc.color.as_deref())
-                .unwrap_or("blue");
-            let color = color_code(color_str);
-            Some(InfoLine {
-                label,
-                value,
-                icon,
-                color,
-            })
-        })
-        .collect();
+    let info_lines = gather_info_lines(config, modules, configs, dynamic_color.as_deref());
 
     let header = build_header();
 
@@ -531,6 +506,402 @@ fn format_bar(percent: u8, width: usize, colored: bool, invert_color: bool) -> S
         "■".repeat(elapsed),
         "-".repeat(remaining)
     ) + reset
+}
+
+fn gather_info_lines(
+    config: &Config,
+    modules: &[Box<dyn Module>],
+    configs: &[rustfetch_core::config::ModuleConfig],
+    dynamic_color: Option<&str>,
+) -> Vec<InfoLine> {
+    let results = detect_all(modules);
+    results
+        .into_iter()
+        .zip(configs.iter())
+        .filter_map(|(result, mc)| {
+            let info = result?;
+            let label = if mc.name == "break" {
+                String::new()
+            } else if mc.name == "custom" {
+                mc.label.clone().unwrap_or_default()
+            } else {
+                mc.label.clone().unwrap_or(info.label)
+            };
+
+            let mut value = if mc.name == "break" {
+                String::new()
+            } else if mc.name == "custom" {
+                mc.value.clone().unwrap_or_default()
+            } else {
+                info.value
+            };
+
+            if let Some(fmt) = &mc.format {
+                value = fmt.replace("{value}", &value).replace("{}", &value);
+            }
+
+            let icon = if config.general.icons && mc.name != "break" {
+                mc.icon
+                    .clone()
+                    .or_else(|| default_icon_for_module(&mc.name).map(str::to_string))
+            } else {
+                None
+            };
+
+            if mc.bar.unwrap_or(false) && !value.is_empty() {
+                if let Some(pct) = extract_percentage(&value) {
+                    let width = mc.bar_width.unwrap_or(10);
+                    let invert = mc.name == "battery";
+                    let bar = format_bar(pct, width, true, invert);
+                    if value.contains('%') {
+                        if let Some(pct_idx) = value.rfind('(') {
+                            value = format!("{}{} {}", &value[..pct_idx], bar, &value[pct_idx..]);
+                        } else {
+                            value = format!("{} {}", value, bar);
+                        }
+                    } else {
+                        value = format!("{} {} ({}%)", value, bar, pct);
+                    }
+                }
+            }
+
+            let color_str = dynamic_color
+                .or(mc.color.as_deref())
+                .unwrap_or("blue");
+            let color = color_code(color_str);
+            Some(InfoLine {
+                label,
+                value,
+                icon,
+                color,
+            })
+        })
+        .collect()
+}
+
+fn build_right_lines(info_lines: &[InfoLine], opts: &layout::RenderOptions) -> Vec<String> {
+    let mut right_lines: Vec<String> = Vec::new();
+
+    if let Some(h) = opts.header {
+        right_lines.push(format!("{BOLD}{}{h}{RESET}", color_code("cyan")));
+        right_lines.push(format!(
+            "{DIM}{}{RESET}",
+            "─".repeat(unicode_width::UnicodeWidthStr::width(h))
+        ));
+    }
+
+    right_lines.extend(layout::format_info_lines(info_lines, opts.separator));
+
+    if let Some(pal) = opts.palette_lines {
+        right_lines.push(String::new());
+        right_lines.extend(pal.iter().cloned());
+    }
+
+    if opts.border {
+        right_lines = layout::wrap_in_box(&right_lines);
+    }
+
+    right_lines
+}
+
+fn run_3d(
+    config: &Config,
+    cli: &Cli,
+    modules: &[Box<dyn Module>],
+    configs: &[rustfetch_core::config::ModuleConfig],
+) {
+    use crossterm::{
+        cursor::{Hide, Show},
+        execute,
+        terminal::{disable_raw_mode, enable_raw_mode, Clear, ClearType},
+    };
+    use std::time::{Duration, Instant};
+
+    let distro_name = if config.general.logo.distro == "auto" {
+        detect_distro_name()
+    } else {
+        config.general.logo.distro.clone()
+    };
+    let logo = logos::get_logo(&distro_name);
+
+    let shading_mode_str = cli
+        .shading_mode
+        .as_deref()
+        .unwrap_or(&config.general.logo.three_d.shading_mode);
+    let shading_mode = rustfetch_render::three_d::ShadingMode::from_str_loose(shading_mode_str);
+
+    let speed = cli.speed.unwrap_or(config.general.logo.three_d.speed);
+    let size_scale = cli.size.unwrap_or(config.general.logo.three_d.size);
+    let depth_scale = cli.depth.unwrap_or(config.general.logo.three_d.depth);
+
+    let (rotate_x, rotate_y) = if cli.rotate_x && !cli.rotate_y {
+        (true, false)
+    } else if cli.rotate_y && !cli.rotate_x {
+        (false, true)
+    } else {
+        (
+            config.general.logo.three_d.rotate_x,
+            config.general.logo.three_d.rotate_y,
+        )
+    };
+
+    let shading_chars = cli
+        .shading
+        .as_deref()
+        .or(config.general.logo.three_d.shading.as_deref());
+
+    let colored_logo_lines = logo.colored_lines();
+    let model = rustfetch_render::three_d::Model3D::from_ascii_lines(
+        &colored_logo_lines,
+        size_scale,
+        depth_scale,
+        shading_mode,
+    );
+
+    let (distro_outer, distro_inner) =
+        rustfetch_render::three_d::distro_3d_colors(&distro_name);
+
+    let mut renderer = rustfetch_render::three_d::Renderer3D::new(shading_mode, shading_chars);
+    renderer.size_scale = size_scale;
+    renderer.speed = speed;
+    renderer.outer_color = config
+        .general
+        .logo
+        .three_d
+        .outer_color
+        .as_deref()
+        .map(rustfetch_render::three_d::parse_color_to_ansi)
+        .unwrap_or_else(|| distro_outer.to_string());
+    renderer.inner_color = config
+        .general
+        .logo
+        .three_d
+        .inner_color
+        .as_deref()
+        .map(rustfetch_render::three_d::parse_color_to_ansi)
+        .unwrap_or_else(|| distro_inner.to_string());
+
+    let palette_lines = if config.general.colors.enabled {
+        Some(layout::build_color_palette(
+            &config.general.colors.symbol,
+            config.general.colors.block,
+            None,
+        ))
+    } else {
+        None
+    };
+
+    let header = build_header();
+    let render_opts = layout::RenderOptions {
+        header: header.as_deref(),
+        separator: &config.general.separator,
+        padding: config.general.padding,
+        center: config.general.center,
+        border: config.general.border,
+        palette_lines: palette_lines.as_deref(),
+    };
+
+    let mut info_lines = gather_info_lines(config, modules, configs, None);
+    let mut right_lines = build_right_lines(&info_lines, &render_opts);
+
+    // RAII guard to guarantee raw mode is disabled and cursor restored on exit or panic
+    struct TermGuard;
+    impl Drop for TermGuard {
+        fn drop(&mut self) {
+            let _ = crossterm::terminal::disable_raw_mode();
+            let _ = crossterm::execute!(std::io::stdout(), crossterm::cursor::Show);
+        }
+    }
+    let _guard = TermGuard;
+
+    let mut stdout = std::io::stdout();
+    let _ = enable_raw_mode();
+    let _ = execute!(
+        stdout,
+        Hide,
+        Clear(ClearType::All),
+        crossterm::cursor::MoveTo(0, 0)
+    );
+    let _ = stdout.flush();
+
+    let mut angle_x = 0.0f32;
+    let mut angle_y = 0.0f32;
+    let mut frame_idx = 0usize;
+    let mut last_metric_refresh = Instant::now();
+
+    let max_frames = cli.frames.or(config.general.logo.three_d.frames);
+
+    loop {
+        if let Some(limit) = max_frames {
+            if frame_idx >= limit {
+                break;
+            }
+        }
+
+        // Re-gather dynamic telemetry every 1 second
+        if last_metric_refresh.elapsed() >= Duration::from_millis(1000) {
+            info_lines = gather_info_lines(config, modules, configs, None);
+            right_lines = build_right_lines(&info_lines, &render_opts);
+            last_metric_refresh = Instant::now();
+        }
+
+        let env_cols = std::env::var("COLUMNS").ok().and_then(|s| s.parse().ok());
+        let env_rows = std::env::var("LINES").ok().and_then(|s| s.parse().ok());
+
+        let (term_cols, term_rows) = match (env_cols, env_rows) {
+            (Some(c), Some(r)) => (c, r),
+            (Some(c), None) => (c, crossterm::terminal::size().map(|(_, r)| r as usize).unwrap_or(24)),
+            (None, Some(r)) => (crossterm::terminal::size().map(|(c, _)| c as usize).unwrap_or(80), r),
+            (None, None) => crossterm::terminal::size()
+                .map(|(c, r)| (c as usize, r as usize))
+                .unwrap_or((80, 24)),
+        };
+
+        // Compute layout
+        let right_width = right_lines
+            .iter()
+            .map(|l| layout::strip_ansi_width(l))
+            .max()
+            .unwrap_or(30);
+
+        let target_width = cli
+            .width
+            .or(config.general.logo.three_d.width)
+            .unwrap_or(config.general.logo.image_width_cols)
+            .max(30);
+
+        let needed_cols = target_width + layout::LOGO_GAP + right_width;
+        let layout_stacked = term_cols < needed_cols;
+
+        let canvas_cols = if layout_stacked {
+            target_width.min(term_cols.max(20))
+        } else {
+            target_width
+        };
+
+        let canvas_rows = if layout_stacked {
+            let max_stacked_h = (canvas_cols * 3 / 5).clamp(16, 36);
+            cli.height
+                .or(config.general.logo.three_d.height)
+                .unwrap_or(max_stacked_h)
+        } else {
+            let ideal_h = (canvas_cols * 3 / 5).max(36);
+            cli.height
+                .or(config.general.logo.three_d.height)
+                .unwrap_or(ideal_h.max(right_lines.len()))
+        };
+
+        // Render 3D Logo
+        let logo_3d = renderer.render_frame(&model, angle_x, angle_y, canvas_cols, canvas_rows);
+
+        // Update rotation
+        if rotate_x {
+            angle_x += 0.04 * speed;
+        }
+        if rotate_y {
+            angle_y += 0.06 * speed;
+        }
+
+        // Compose frame into single buffer with \x1b[H
+        let mut frame_buf = String::with_capacity(term_cols * term_rows * 4 + 64);
+        frame_buf.push_str("\x1b[H");
+
+        if layout_stacked {
+            let left_pad = if config.general.center {
+                " ".repeat(term_cols.saturating_sub(canvas_cols) / 2)
+            } else {
+                " ".repeat(config.general.padding)
+            };
+            for line in &logo_3d {
+                frame_buf.push_str(&left_pad);
+                frame_buf.push_str(line);
+                frame_buf.push_str("\x1b[K\r\n");
+            }
+            frame_buf.push_str("\x1b[K\r\n");
+            let info_pad = if config.general.center {
+                " ".repeat(term_cols.saturating_sub(right_width) / 2)
+            } else {
+                " ".repeat(config.general.padding)
+            };
+            for line in &right_lines {
+                frame_buf.push_str(&info_pad);
+                frame_buf.push_str(line);
+                frame_buf.push_str("\x1b[K\r\n");
+            }
+        } else {
+            let total_content_w = canvas_cols + layout::LOGO_GAP + right_width;
+            let left_pad = if config.general.center {
+                " ".repeat(term_cols.saturating_sub(total_content_w) / 2)
+            } else {
+                " ".repeat(config.general.padding)
+            };
+            let total_rows = canvas_rows.max(right_lines.len());
+            let gap = " ".repeat(layout::LOGO_GAP);
+
+            for r in 0..total_rows {
+                frame_buf.push_str(&left_pad);
+                if r < logo_3d.len() {
+                    frame_buf.push_str(&logo_3d[r]);
+                } else {
+                    frame_buf.push_str(&" ".repeat(canvas_cols));
+                }
+                frame_buf.push_str(&gap);
+                if r < right_lines.len() {
+                    frame_buf.push_str(&right_lines[r]);
+                }
+                frame_buf.push_str("\x1b[K\r\n");
+            }
+        }
+
+        let _ = stdout.write_all(frame_buf.as_bytes());
+        let _ = stdout.flush();
+
+        frame_idx += 1;
+
+        // Poll input: only exit on Ctrl+C (0x03) or 'q' / 'Q'.
+        // Consume and drain all other typed keys so the 3D logo keeps spinning continuously!
+        #[cfg(unix)]
+        {
+            use std::os::unix::io::AsRawFd;
+            let fd = std::io::stdin().as_raw_fd();
+            let mut pfd = libc::pollfd {
+                fd,
+                events: libc::POLLIN,
+                revents: 0,
+            };
+            let ret = unsafe { libc::poll(&mut pfd, 1, 33) };
+            if ret > 0 && (pfd.revents & libc::POLLIN) != 0 {
+                let mut buf = [0u8; 128];
+                let n = unsafe { libc::read(fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len()) };
+                if n > 0 {
+                    let bytes = &buf[..n as usize];
+                    if bytes.iter().any(|&b| b == 3 || b == b'q' || b == b'Q') {
+                        break;
+                    }
+                }
+            }
+        }
+        #[cfg(not(unix))]
+        {
+            if let Ok(ready) = crossterm::event::poll(Duration::from_millis(33)) {
+                if ready {
+                    if let Ok(crossterm::event::Event::Key(key)) = crossterm::event::read() {
+                        if (key.code == crossterm::event::KeyCode::Char('c')
+                            && key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL))
+                            || key.code == crossterm::event::KeyCode::Char('q')
+                            || key.code == crossterm::event::KeyCode::Char('Q')
+                        {
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let _ = disable_raw_mode();
+    let _ = execute!(stdout, Show);
+    let _ = stdout.flush();
 }
 
 fn run_live(

@@ -90,6 +90,31 @@ bar_width = 10              # (Optional) Progress bar character width (default: 
 | `bar_width` | `integer` | `10` | The character width of the progress bar. |
 | `value` | `string` | `None` | Static text value (used specifically by the `custom` module). |
 
+### Logo & 3D Animation Settings (`[general.logo]` and `[general.logo.three_d]`)
+
+```toml
+[general]
+3d = true                    # Toggle animated 3D ASCII relief mode
+
+[general.logo]
+enabled = true
+distro = "auto"              # Auto-detect or specify "arch", "fedora", "gentoo", etc.
+image_width_cols = 60        # Width of 3D canvas or rendered image (default: 60)
+protocol = "auto"            # "auto", "kitty", or "halfblock"
+
+[general.logo.three_d]
+enabled = true               # Enable 3D relief engine
+speed = 1.0                  # Rotation speed multiplier
+rotate_x = true              # Enable rotation on X axis
+rotate_y = true              # Enable rotation on Y axis
+size = 1.25                  # Scale factor for 3D model
+depth = 1.0                  # Depth extrusion scale
+width = 60                   # Canvas column width (alias: image_width_cols)
+shading_mode = "ascii"       # "ascii" (default), "blocks", or "sextants"
+# outer_color = "#29a8e0"    # Optional 24-bit TrueColor hex/name override
+# inner_color = "#ffffff"
+```
+
 > [!TIP]
 > **Serde Aliases for Total Freedom:**
 > - You can use `text`, `label`, `title`, or `key` interchangeably.

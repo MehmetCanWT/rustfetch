@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(default)]
 pub struct Config {
     pub general: GeneralConfig,
@@ -28,7 +28,73 @@ impl Default for ColorsConfig {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[serde(default)]
+pub struct ThreeDConfig {
+    pub enabled: bool,
+    pub speed: f32,
+    pub rotate_x: bool,
+    pub rotate_y: bool,
+    pub size: f32,
+    pub depth: f32,
+    #[serde(skip_serializing_if = "Option::is_none", alias = "image_width_cols", alias = "cols")]
+    pub width: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none", alias = "rows")]
+    pub height: Option<usize>,
+    pub shading_mode: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub shading: Option<String>,
+    pub light: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub frames: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub outer_color: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub inner_color: Option<String>,
+}
+
+impl Default for ThreeDConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            speed: 1.0,
+            rotate_x: true,
+            rotate_y: true,
+            size: 1.25,
+            depth: 1.0,
+            width: None,
+            height: None,
+            shading_mode: "ascii".to_string(),
+            shading: None,
+            light: "top-left".to_string(),
+            frames: None,
+            outer_color: None,
+            inner_color: None,
+        }
+    }
+}
+
+fn deserialize_three_d<'de, D>(deserializer: D) -> Result<ThreeDConfig, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Helper {
+        Bool(bool),
+        Config(ThreeDConfig),
+    }
+
+    match Helper::deserialize(deserializer)? {
+        Helper::Bool(b) => Ok(ThreeDConfig {
+            enabled: b,
+            ..ThreeDConfig::default()
+        }),
+        Helper::Config(cfg) => Ok(cfg),
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(default)]
 pub struct GeneralConfig {
     pub separator: String,
@@ -38,9 +104,11 @@ pub struct GeneralConfig {
     pub border: bool,
     pub colors: ColorsConfig,
     pub logo: LogoConfig,
+    #[serde(alias = "3d", default)]
+    pub three_d: Option<bool>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(default)]
 pub struct LogoConfig {
     pub enabled: bool,
@@ -51,6 +119,8 @@ pub struct LogoConfig {
     pub random_image: bool,
     pub auto_color: bool,
     pub protocol: String,
+    #[serde(alias = "3d", default, deserialize_with = "deserialize_three_d")]
+    pub three_d: ThreeDConfig,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize, Serialize)]
@@ -89,11 +159,12 @@ impl Default for LogoConfig {
             enabled: true,
             distro: "auto".to_string(),
             image_path: None,
-            image_width_cols: 30,
+            image_width_cols: 60,
             image_dir: None,
             random_image: false,
             auto_color: true,
             protocol: "auto".to_string(),
+            three_d: ThreeDConfig::default(),
         }
     }
 }
@@ -108,6 +179,7 @@ impl Default for GeneralConfig {
             border: false,
             colors: ColorsConfig::default(),
             logo: LogoConfig::default(),
+            three_d: None,
         }
     }
 }
@@ -995,5 +1067,38 @@ separator = 12345
         assert_eq!(config.modules[0].icon.as_deref(), Some(">_"));
         assert_eq!(config.modules[1].label.as_deref(), Some("Processor"));
         assert_eq!(config.modules[1].icon.as_deref(), Some(""));
+    }
+
+    #[test]
+    fn test_three_d_config_boolean_and_table() {
+        let toml_bool = r#"
+        [general.logo]
+        3d = true
+        "#;
+        let cfg1: Config = toml::from_str(toml_bool).unwrap();
+        assert!(cfg1.general.logo.three_d.enabled);
+
+        let toml_table = r##"
+        [general.logo.three_d]
+        enabled = true
+        speed = 2.0
+        width = 60
+        outer_color = "#3b82f6"
+        "##;
+        let cfg2: Config = toml::from_str(toml_table).unwrap();
+        assert!(cfg2.general.logo.three_d.enabled);
+        assert_eq!(cfg2.general.logo.three_d.speed, 2.0);
+        assert_eq!(cfg2.general.logo.three_d.width, Some(60));
+        assert_eq!(
+            cfg2.general.logo.three_d.outer_color.as_deref(),
+            Some("#3b82f6")
+        );
+
+        let toml_gen = r#"
+        [general]
+        3d = true
+        "#;
+        let cfg3: Config = toml::from_str(toml_gen).unwrap();
+        assert_eq!(cfg3.general.three_d, Some(true));
     }
 }

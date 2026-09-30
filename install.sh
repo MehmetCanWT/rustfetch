@@ -199,6 +199,99 @@ if [ -n "$MAN_SRC" ]; then
     fi
 fi
 
+# 9. Configure default display mode (Interactive selection: 3D vs Standard 2D)
+CONFIG_FILE="$CONFIG_DIR/config.toml"
+
+echo ""
+echo -e "${BLUE}==>${NC} Choose default logo display mode:"
+echo -e "  ${GREEN}1)${NC} 3D Animated   — Real-time spinning 3D ASCII relief logo (like areofyl/fetch)"
+echo -e "  ${GREEN}2)${NC} Standard 2D   — Classic fastfetch-style static ASCII logo"
+
+MODE_CHOICE="3d"
+if [ -t 0 ] || [ -c /dev/tty ]; then
+    read -rp "Select mode [1-2] (default: 1): " USER_INPUT </dev/tty 2>/dev/null || USER_INPUT="1"
+    case "$USER_INPUT" in
+        2|"2d"|"normal"|"standard")
+            MODE_CHOICE="2d"
+            ;;
+        *)
+            MODE_CHOICE="3d"
+            ;;
+    esac
+else
+    MODE_CHOICE="3d"
+fi
+
+if [ "$MODE_CHOICE" = "3d" ]; then
+    echo -e "${GREEN}==>${NC} Configured default mode: ${BLUE}3D Animated${NC} (3d = true)"
+    if [ -f "$CONFIG_FILE" ]; then
+        if grep -q "\[general\.logo\.three_d\]" "$CONFIG_FILE"; then
+            sed -i '/\[general\.logo\.three_d\]/,/^\[/ s/enabled = .*/enabled = true/' "$CONFIG_FILE"
+        else
+            cat << 'EOF' >> "$CONFIG_FILE"
+
+[general.logo.three_d]
+enabled = true
+EOF
+        fi
+    else
+        cat << 'EOF' > "$CONFIG_FILE"
+[general]
+separator = ":"
+padding = 1
+center = true
+icons = true
+border = false
+
+[general.colors]
+enabled = true
+symbol = "●"
+block = false
+
+[general.logo]
+enabled = true
+distro = "auto"
+3d = true
+
+[general.logo.three_d]
+enabled = true
+speed = 1.0
+shading_mode = "ascii"
+EOF
+    fi
+else
+    echo -e "${GREEN}==>${NC} Configured default mode: ${BLUE}Standard 2D${NC} (3d = false)"
+    if [ -f "$CONFIG_FILE" ]; then
+        if grep -q "\[general\.logo\.three_d\]" "$CONFIG_FILE"; then
+            sed -i '/\[general\.logo\.three_d\]/,/^\[/ s/enabled = .*/enabled = false/' "$CONFIG_FILE"
+        elif grep -q "3d = true" "$CONFIG_FILE"; then
+            sed -i 's/3d = true/3d = false/' "$CONFIG_FILE"
+        fi
+    else
+        cat << 'EOF' > "$CONFIG_FILE"
+[general]
+separator = ":"
+padding = 1
+center = true
+icons = true
+border = false
+
+[general.colors]
+enabled = true
+symbol = "●"
+block = false
+
+[general.logo]
+enabled = true
+distro = "auto"
+3d = false
+
+[general.logo.three_d]
+enabled = false
+EOF
+    fi
+fi
+
 echo ""
 echo -e "${GREEN}==> Installation completed successfully!${NC} 🚀"
 echo -e "Binaries installed to: ${BLUE}${FINAL_BIN_DIR}${NC}"

@@ -138,6 +138,40 @@ RustFetch provides built-in visual presets that can be triggered on the command 
 
 ---
 
+## Animated 3D ASCII Logos (`--3d` / `3d = true`)
+
+RustFetch features an authentic, real-time 3D ASCII rendering engine inspired by [`areofyl/fetch`](https://github.com/areofyl/fetch). It converts any distro ASCII logo into a 3D relief model with depth extrusions, Blinn-Phong diffuse & specular lighting, perspective projection, and sub-cell rasterization:
+
+- **24-bit TrueColor RGB:** Uses exact RGB escape sequences (`\x1b[38;2;R;G;Bm`) that completely bypass terminal theme remappings (such as Kitty themes, Catppuccin, or TokyoNight). Distro branding is always 100% accurate:
+  - **Fedora:** Official Blue `#29a8e0` + Pure White `#ffffff`
+  - **Gentoo:** Official Pink/Purple `#fe7ae6` + Pure White `#ffffff`
+  - **Arch:** Arch Cyan `#1793d1` + Light Cyan `#33a2e6`
+  - **Ubuntu:** Ubuntu Orange `#e95420` + Pure White `#ffffff`
+  - **Debian:** Debian Red `#d70a53` + Pure White `#ffffff`
+- **Large & Configurable Canvas (`image_width_cols = 60`):** By default, 3D models render at a glorious 60 columns wide and 34–36 rows tall. Automatically normalizes compact ASCII logos so they fill the canvas with full relief depth.
+- **Continuous Non-Stop Animation:** Runs natively in the terminal buffer without interrupting when you type commands. Pressing **`Ctrl+C`** or **`q`** cleanly restores the terminal and exits.
+- **Interactive Installer Menu:** Running `./install.sh` displays an interactive prompt allowing you to set 3D Animated mode or Standard 2D mode as your default.
+
+```bash
+# Run continuous 3D animated fetch (or set 3d = true in config)
+rustfetch --3d
+
+# Choose another distro logo or adjust speed and depth
+rustfetch --3d --logo arch --speed 1.5 --depth 1.2
+
+# Custom canvas width and size
+rustfetch --3d --width 70 --size 1.3
+
+# Sub-cell blocks & sextants shading
+rustfetch --3d --shading-mode blocks
+rustfetch --3d --shading-mode sextants
+
+# Stop after N frames (e.g. for scripted benchmarks)
+rustfetch --3d --frames 100
+```
+
+---
+
 ## Command Line Options
 
 ```text
@@ -145,12 +179,22 @@ Usage: rustfetch [OPTIONS] (or rfetch [OPTIONS])
 
 Options:
       --preset <NAME>          Apply a built-in layout preset [card, minimal, modern, compact, default]
+      --3d                     Run in animated 3D ASCII art mode (continuous autonomous rotation)
+      --width <COLS>           3D canvas width in columns (alias: --image-width-cols) [default: 60]
+      --height <ROWS>          3D canvas height in rows [default: auto (36)]
+      --speed <FLOAT>          3D animation speed multiplier [default: 1.0]
+      --rotate-x               Lock/toggle 3D rotation to X axis
+      --rotate-y               Lock/toggle 3D rotation to Y axis
+      --size <FLOAT>           Scale 3D logo size [default: 1.25]
+      --depth <FLOAT>          Scale 3D extrusion depth [default: 1.0]
+      --shading-mode <MODE>    Shading mode: ascii (default), blocks, sextants
+      --shading <CHARS>        Custom shading ramp characters
+      --frames <N>             Run for N frames instead of continuous loop
       --benchmark              Run microsecond execution profiler
   -c, --config <PATH>          Path to custom TOML config file
   -i, --image <PATH>           Render image instead of ASCII logo (Kitty protocol / halfblock)
-  -l, --logo <NAME>            Override ASCII logo (e.g. arch, fedora, ubuntu, void, alpine, etc.)
+  -l, --logo <NAME>            Override ASCII logo (e.g. arch, fedora, gentoo, ubuntu, void, alpine, etc.)
       --color <COLOR>          Override primary accent color (name or hex like #ff79c6)
-      --align <ALIGN>          Output alignment: left, right, or center
       --center                 Center output horizontally in terminal window
       --no-logo                Disable logo completely
       --live                   Run in real-time monitor mode
@@ -208,7 +252,8 @@ separator = ":"
 padding = 1
 center = true
 icons = true
-border = false
+border = true
+3d = true                    # Enable animated 3D ASCII mode by default
 
 [general.colors]
 enabled = true
@@ -218,8 +263,16 @@ block = false
 [general.logo]
 enabled = true
 distro = "auto"
-protocol = "auto"          # "auto", "kitty", or "halfblock"
-# auto_color = true        # extract accent color from image
+image_width_cols = 60        # Width of 3D logo or image
+protocol = "auto"
+
+[general.logo.three_d]
+enabled = true
+speed = 1.0
+size = 1.25
+shading_mode = "ascii"       # "ascii", "blocks", or "sextants"
+# outer_color = "#29a8e0"    # Optional custom TrueColor overrides
+# inner_color = "#ffffff"
 
 [[modules]]
 name = "os"

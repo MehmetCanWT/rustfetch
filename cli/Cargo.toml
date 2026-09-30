@@ -1,0 +1,29 @@
+[package]
+name = "rustfetch"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description.workspace = true
+repository.workspace = true
+default-run = "rustfetch"
+
+[dependencies]
+rustfetch-core = { path = "../core", version = "0.1.0" }
+rustfetch-render = { path = "../render", version = "0.1.0" }
+clap = { version = "4", features = ["derive"] }
+clap_complete = "4"
+serde = { workspace = true }
+serde_json = { workspace = true }
+unicode-width = "0.2"
+libc = "0.2"
+crossterm = "0.29.0"
+shellexpand = "3.1.2"
+
+[[bin]]
+name = "rustfetch"
+path = "src/main.rs"
+
+[[bin]]
+name = "rfetch"
+path = "src/bin/rfetch.rs"
+

@@ -1,0 +1,58 @@
+# Maintainer: MehmetCanWT <https://github.com/MehmetCanWT/rustfetch>
+pkgname=rustfetch
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="A blazing-fast, memory-safe system fetch tool written in Rust"
+arch=('x86_64' 'aarch64')
+url="https://github.com/MehmetCanWT/rustfetch"
+license=('MIT')
+makedepends=('cargo')
+depends=('gcc-libs')
+optdepends=(
+    'kitty: Kitty graphics protocol image rendering'
+    'wireplumber: Sound module support'
+    'playerctl: MPRIS media module support'
+)
+provides=('rustfetch' 'rfetch')
+conflicts=('rustfetch-git' 'rustfetch-bin')
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+prepare() {
+    cd "$pkgname-$pkgver"
+    cargo fetch --locked --target "$(rustc -vV | sed -n 's/host: //p')"
+}
+
+build() {
+    cd "$pkgname-$pkgver"
+    cargo build --frozen --release -p rustfetch
+}
+
+check() {
+    cd "$pkgname-$pkgver"
+    cargo test --frozen --all
+}
+
+package() {
+    cd "$pkgname-$pkgver"
+    install -Dm755 target/release/rustfetch "$pkgdir/usr/bin/rustfetch"
+    ln -sf rustfetch "$pkgdir/usr/bin/rfetch"
+
+    # Shell completions
+    target/release/rustfetch --completions bash | install -Dm644 /dev/stdin "$pkgdir/usr/share/bash-completion/completions/rustfetch"
+    ln -sf rustfetch "$pkgdir/usr/share/bash-completion/completions/rfetch"
+
+    target/release/rustfetch --completions zsh | install -Dm644 /dev/stdin "$pkgdir/usr/share/zsh/site-functions/_rustfetch"
+    ln -sf _rustfetch "$pkgdir/usr/share/zsh/site-functions/_rfetch"
+
+    target/release/rustfetch --completions fish | install -Dm644 /dev/stdin "$pkgdir/usr/share/fish/vendor_completions.d/rustfetch.fish"
+    ln -sf rustfetch.fish "$pkgdir/usr/share/fish/vendor_completions.d/rfetch.fish"
+
+    # Man page
+    install -Dm644 docs/rustfetch.1 "$pkgdir/usr/share/man/man1/rustfetch.1"
+    ln -sf rustfetch.1 "$pkgdir/usr/share/man/man1/rfetch.1"
+
+    install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+    install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+    install -Dm644 MODULES.md "$pkgdir/usr/share/doc/$pkgname/MODULES.md"
+}

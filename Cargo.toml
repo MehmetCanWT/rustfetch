@@ -1,0 +1,23 @@
+[workspace]
+members = ["core", "render", "cli"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+authors = ["MehmetCanWT"]
+edition = "2021"
+description = "A blazing-fast, memory-safe system fetch tool."
+repository = "https://github.com/MehmetCanWT/rustfetch"
+license = "MIT"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true
+opt-level = 3

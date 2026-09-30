@@ -1,0 +1,163 @@
+.TH RUSTFETCH 1 "September 2026" "rustfetch 0.1.0" "User Commands"
+.SH NAME
+rustfetch, rfetch \- blazing-fast, memory-safe system information fetch tool
+.SH SYNOPSIS
+.B rustfetch
+[\fIOPTIONS\fR]
+.br
+.B rfetch
+[\fIOPTIONS\fR]
+.SH DESCRIPTION
+\fBRustFetch\fR is a lightweight, ultra-fast system information tool written in pure Rust.
+Designed as a memory-safe, zero-fork alternative to Neofetch and Fastfetch, it gathers
+system telemetry directly from Linux kernel interfaces (\fB/proc\fR and \fB/sys\fR) without
+spawning shell sub-processes.
+.PP
+The executable is also available under the alias \fBrfetch\fR.
+.SH OPTIONS
+.TP
+.BR \-\-preset " \fINAME\fR"
+Apply a built-in layout and formatting preset. Available presets:
+.RS
+.IP \(bu 2
+\fBdefault\fR: Standard clean view with auto-detected distro ASCII logo.
+.IP \(bu 2
+\fBcard\fR: Rounded border card container with centered ASCII art.
+.IP \(bu 2
+\fBminimal\fR: Compact hardware view without ASCII art or icons.
+.IP \(bu 2
+\fBmodern\fR: Dot separator with colorful section banners.
+.IP \(bu 2
+\fBcompact\fR: Terse key-value layout with short labels.
+.RE
+.TP
+.BR \-\-benchmark
+Run execution profiler measuring microsecond-level latency per telemetry module.
+.TP
+.BR \-c ", " \-\-config " \fIPATH\fR"
+Path to custom TOML configuration file (defaults to \fI~/.config/rustfetch/config.toml\fR).
+.TP
+.BR \-i ", " \-\-image " \fIPATH\fR"
+Render an image instead of ASCII art using the Kitty Graphics Protocol.
+.TP
+.BR \-l ", " \-\-logo " \fINAME\fR"
+Override ASCII logo (e.g., \fIarch\fR, \fIubuntu\fR, \fIfedora\fR, \fIdebian\fR, \fIvoid\fR, \fIalpine\fR, \fInixos\fR, \fIgentoo\fR, etc.).
+.TP
+.BR \-\-color " \fICOLOR\fR"
+Override primary theme color (e.g., \fIcyan\fR, \fIblue\fR, \fIgreen\fR, \fIred\fR, \fIyellow\fR, \fImagenta\fR, \fIwhite\fR, or hex \fI#33aadd\fR).
+.TP
+.BR \-\-align " \fIALIGN\fR"
+Set layout alignment: \fIleft\fR, \fIright\fR, or \fIcenter\fR.
+.TP
+.BR \-\-center
+Shortcut to horizontally center both logo and system information in terminal.
+.TP
+.BR \-\-json
+Output system information in structured JSON format.
+.TP
+.BR \-\-live
+Run in continuous real-time monitor mode with live metrics update.
+.TP
+.BR \-\-dump\-config
+Print current active configuration to stdout.
+.TP
+.BR \-\-generate\-config
+Generate default \fIconfig.toml\fR file in \fI~/.config/rustfetch/\fR.
+.TP
+.BR \-\-import\-fastfetch
+Import existing Fastfetch configuration and convert it into RustFetch TOML format.
+.TP
+.BR \-\-completions " \fISHELL\fR"
+Generate shell auto-completion script for \fIbash\fR, \fIzsh\fR, or \fIfish\fR.
+.TP
+.BR \-h ", " \-\-help
+Print help information.
+.TP
+.BR \-V ", " \-\-version
+Print version information.
+.SH MODULES
+RustFetch supports the following modular telemetry collectors:
+.TP
+.B os
+Operating system name, distribution ID, and release from \fI/etc/os-release\fR.
+.TP
+.B kernel
+Running Linux kernel release from \fBuname(2)\fR.
+.TP
+.B uptime
+System uptime parsed from \fI/proc/uptime\fR.
+.TP
+.B packages
+Total installed package count across pacman, dpkg, rpm, flatpak, apk, xbps, nix, emerge, and snap.
+.TP
+.B shell
+Active user shell and version from \fB$SHELL\fR.
+.TP
+.B display
+Connected monitors, active resolutions, and refresh rates (parsed via EDID from \fI/sys/class/drm\fR).
+.TP
+.B de
+Desktop Environment (\fB$XDG_CURRENT_DESKTOP\fR or \fB$DESKTOP_SESSION\fR).
+.TP
+.B wm
+Window Manager (Wayland compositor or X11 WM detection).
+.TP
+.B terminal
+Terminal emulator name detected via parent process inspection.
+.TP
+.B cpu
+Processor model name, core/thread count, and maximum frequency from \fI/proc/cpuinfo\fR.
+.TP
+.B gpu
+Graphics cards detected via PCI class inspection in \fI/sys/bus/pci/devices\fR.
+.TP
+.B memory
+RAM usage and total capacity parsed directly from \fI/proc/meminfo\fR.
+.TP
+.B swap
+Swap space usage parsed from \fI/proc/meminfo\fR.
+.TP
+.B disk
+Root and mounted filesystem usage.
+.TP
+.B battery
+Battery status and charge percentage from \fI/sys/class/power_supply\fR.
+.TP
+.B sound
+Default audio sink volume and mute status via WirePlumber / PulseAudio.
+.TP
+.B wifi
+Active wireless interface SSID and signal quality percentage.
+.TP
+.B processes
+Total running process count and 1-minute load average from \fI/proc/loadavg\fR.
+.TP
+.B media
+Current MPRIS player status and playback title (optional, disabled by default).
+.TP
+.B colors
+Terminal 8-color palette preview bar.
+.TP
+.B custom
+Arbitrary user-defined text line.
+.SH ENVIRONMENT
+.TP
+.B NO_COLOR
+If set to any non-empty value (regardless of content), ANSI color codes are completely disabled.
+.TP
+.B TERM
+When set to \fIdumb\fR, ANSI formatting is stripped. When set to \fIlinux\fR (Linux virtual console/TTY), TrueColor hex codes are automatically mapped to 16 standard ANSI colors for maximum readability.
+.SH FILES
+.TP
+.I ~/.config/rustfetch/config.toml
+Main user configuration file.
+.TP
+.I ~/.config/rustfetch/logos/
+Directory for custom ASCII logo files.
+.SH AUTHORS
+Written and maintained by Mehmet Can (\fIMehmetCanWT\fR) and contributors.
+.SH REPORTING BUGS
+Report bugs and open issues at: <https://github.com/MehmetCanWT/rustfetch/issues>
+.SH SEE ALSO
+.BR fastfetch (1),
+.BR neofetch (1)

@@ -1,3 +1,4 @@
+pub mod ascii;
 pub mod cache;
 pub mod config;
 pub mod modules;

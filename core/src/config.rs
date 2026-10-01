@@ -113,9 +113,38 @@ pub struct GeneralConfig {
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(default)]
+pub struct AnimationConfig {
+    pub enabled: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    pub fps: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exit_on_key: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub frames: Option<usize>,
+    pub infinite: bool,
+}
+
+impl Default for AnimationConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            path: None,
+            fps: 15.0,
+            exit_on_key: Some(true),
+            frames: None,
+            infinite: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[serde(default)]
 pub struct LogoConfig {
     pub enabled: bool,
     pub distro: String,
+    #[serde(skip_serializing_if = "Option::is_none", alias = "ascii")]
+    pub ascii_path: Option<String>,
     pub image_path: Option<String>,
     pub image_width_cols: usize,
     pub image_dir: Option<String>,
@@ -124,6 +153,8 @@ pub struct LogoConfig {
     pub protocol: String,
     #[serde(alias = "3d", default, deserialize_with = "deserialize_three_d")]
     pub three_d: ThreeDConfig,
+    #[serde(alias = "anim", default)]
+    pub animation: AnimationConfig,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize, Serialize)]
@@ -161,6 +192,7 @@ impl Default for LogoConfig {
         Self {
             enabled: true,
             distro: "auto".to_string(),
+            ascii_path: None,
             image_path: None,
             image_width_cols: 42,
             image_dir: None,
@@ -168,6 +200,7 @@ impl Default for LogoConfig {
             auto_color: true,
             protocol: "auto".to_string(),
             three_d: ThreeDConfig::default(),
+            animation: AnimationConfig::default(),
         }
     }
 }

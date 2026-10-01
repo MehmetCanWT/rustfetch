@@ -172,6 +172,30 @@ rustfetch --3d --frames 100
 
 ---
 
+## 🎬 Custom ASCII Art & Frame Animations (`--ascii` / `--ascii-anim`)
+
+> 📖 **Full Guide & Formatting:** Check out **[ascii-anim.md](ascii-anim.md)** for a complete walkthrough on creating custom multi-frame animations, delimiter syntax, and directory setups.
+
+- **Custom Static ASCII (`--ascii <PATH>`):** Use your own custom ASCII text file in 2D or extrude it into an interactive 3D model with `--3d` (`rfetch --ascii my_logo.txt --3d`).
+- **Multi-Frame ASCII Animations (`--ascii-anim <PATH>`):** Play continuous frame-by-frame ASCII animations from a single file (separated by `===FRAME===` / `---`) or a directory of frames (`01.txt`, `02.txt`).
+- **Seamless Typing Handover (`exit_on_key = true`):** The animation runs smoothly on shell startup, but stops the instant you type any command without eating a single keystroke.
+
+```bash
+# Display your own custom ASCII drawing
+rustfetch --ascii ~/art/logo.txt
+
+# Turn your custom ASCII drawing into an interactive rotating 3D model
+rustfetch --ascii ~/art/logo.txt --3d
+
+# Play an animated ASCII sequence from a multi-frame file
+rustfetch --ascii-anim assets/animations/spinner.txt --fps 15
+
+# Play an animated ASCII sequence from a directory of frames
+rustfetch --ascii-anim assets/animations/pulse/ --fps 12
+```
+
+---
+
 ## Command Line Options
 
 ```text
@@ -180,16 +204,21 @@ Usage: rustfetch [OPTIONS] (or rfetch [OPTIONS])
 Options:
       --preset <NAME>          Apply a built-in layout preset [card, minimal, modern, compact, default]
       --3d                     Run in animated 3D ASCII art mode (continuous autonomous rotation)
-      --width <COLS>           3D canvas width in columns (alias: --image-width-cols) [default: 60]
-      --height <ROWS>          3D canvas height in rows [default: auto (36)]
+      --ascii <PATH>           Path to custom static ASCII art file (used in 2D or 3D)
+      --ascii-anim <PATH>      Path to multi-frame ASCII animation file or directory (alias: --anim)
+      --fps <FLOAT>            Animation playback speed in frames per second [default: 15.0]
+      --width <COLS>           3D canvas width in columns (alias: --image-width-cols) [default: 42]
+      --height <ROWS>          3D canvas height in rows [default: auto (24)]
       --speed <FLOAT>          3D animation speed multiplier [default: 1.0]
       --rotate-x               Lock/toggle 3D rotation to X axis
       --rotate-y               Lock/toggle 3D rotation to Y axis
-      --size <FLOAT>           Scale 3D logo size [default: 1.25]
+      --size <FLOAT>           Scale 3D logo size [default: 1.0]
       --depth <FLOAT>          Scale 3D extrusion depth [default: 1.0]
       --shading-mode <MODE>    Shading mode: ascii (default), blocks, sextants
       --shading <CHARS>        Custom shading ramp characters
       --frames <N>             Run for N frames instead of continuous loop
+      --hold                   Do not exit animation on keypress (only exit on Ctrl+C or 'q')
+      --exit-on-key            Exit animation immediately on keypress, yielding to shell prompt
       --benchmark              Run microsecond execution profiler
   -c, --config <PATH>          Path to custom TOML config file
   -i, --image <PATH>           Render image instead of ASCII logo (Kitty protocol / halfblock)

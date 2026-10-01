@@ -1,7 +1,10 @@
 pub mod battery;
+pub mod bluetooth;
 pub mod board;
 pub mod break_line;
+pub mod brightness;
 pub mod cpu;
+pub mod cpu_usage;
 pub mod custom;
 pub mod desktop;
 pub mod disk;
@@ -46,6 +49,7 @@ pub fn all_modules() -> Vec<Box<dyn Module>> {
         Box::new(swap::Swap),
         Box::new(disk::Disk),
         Box::new(battery::BatteryModule),
+        Box::new(brightness::BrightnessModule),
         Box::new(display::Display),
         Box::new(sound::Sound),
         Box::new(wifi::Wifi),
@@ -68,15 +72,18 @@ pub fn module_by_name(name: &str) -> Option<Box<dyn Module>> {
         "font" => Some(Box::new(font::FontModule)),
         "terminal" => Some(Box::new(terminal::Terminal)),
         "cpu" => Some(Box::new(cpu::Cpu)),
+        "cpu_usage" => Some(Box::new(cpu_usage::CpuUsage)),
         "temp" => Some(Box::new(temp::Temp)),
         "gpu" => Some(Box::new(gpu::GpuModule)),
         "memory" => Some(Box::new(memory::Memory)),
         "swap" => Some(Box::new(swap::Swap)),
         "disk" => Some(Box::new(disk::Disk)),
         "battery" => Some(Box::new(battery::BatteryModule)),
+        "brightness" => Some(Box::new(brightness::BrightnessModule)),
         "display" => Some(Box::new(display::Display)),
         "sound" => Some(Box::new(sound::Sound)),
         "media" => Some(Box::new(media::Media)),
+        "bluetooth" => Some(Box::new(bluetooth::BluetoothModule)),
         "wifi" => Some(Box::new(wifi::Wifi)),
         "local_ip" => Some(Box::new(local_ip::LocalIpModule)),
         "locale" => Some(Box::new(locale::Locale)),
@@ -97,6 +104,7 @@ mod tests {
         let names: Vec<&str> = all.iter().map(|m| m.name()).collect();
         assert!(names.contains(&"temp"));
         assert!(names.contains(&"sound"));
+        assert!(names.contains(&"brightness"));
         assert!(!names.contains(&"media"));
     }
 
@@ -105,6 +113,9 @@ mod tests {
         assert!(module_by_name("temp").is_some());
         assert!(module_by_name("sound").is_some());
         assert!(module_by_name("media").is_some());
+        assert!(module_by_name("brightness").is_some());
+        assert!(module_by_name("cpu_usage").is_some());
+        assert!(module_by_name("bluetooth").is_some());
         assert!(module_by_name("custom").is_some());
         assert!(module_by_name("break").is_some());
         assert!(module_by_name("nonexistent").is_none());

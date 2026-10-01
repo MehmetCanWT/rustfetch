@@ -9,7 +9,7 @@ use rustfetch_core::{default_icon_for_module, detect_all, Module};
 use serde::Serialize;
 use std::io::Write;
 
-use layout::{color_code, InfoLine, LogoBlock, BOLD, DIM, RESET};
+use layout::{color_code, InfoLine, LogoBlock};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -83,6 +83,15 @@ struct Cli {
 
     #[arg(long, value_name = "N")]
     frames: Option<usize>,
+
+    #[arg(long)]
+    infinite: bool,
+
+    #[arg(long)]
+    hold: bool,
+
+    #[arg(long)]
+    exit_on_key: bool,
 
     #[arg(long)]
     json: bool,
@@ -212,9 +221,25 @@ fn main() {
             .unzip()
     };
 
-    let is_3d = cli.three_d
+    use std::io::IsTerminal;
+
+    let is_interactive = std::io::stdout().is_terminal() && std::io::stdin().is_terminal();
+    let is_dumb = std::env::var("TERM")
+        .map(|t| t == "dumb" || t.is_empty())
+        .unwrap_or(false);
+
+    // CRITICAL SYSTEM SAFETY GUARD:
+    // Animated 3D mode and Live monitor mode MUST NEVER run in non-interactive,
+    // piped, redirected, or headless environments (e.g. SDDM/GDM session startup scripts,
+    // systemd services, cron jobs, pipes, or background subshells).
+    // Running interactive raw-mode animation loops in non-TTY environments hangs
+    // display managers and session scripts indefinitely!
+    let is_3d_requested = cli.three_d
         || config.general.logo.three_d.enabled
         || config.general.three_d.unwrap_or(false);
+
+    let is_3d = is_3d_requested && is_interactive && !is_dumb;
+    let is_live = cli.live && is_interactive && !is_dumb;
 
     if cli.benchmark {
         run_benchmark(&modules);
@@ -222,7 +247,7 @@ fn main() {
         run_json(&config, &modules, &configs);
     } else if is_3d {
         run_3d(&config, &cli, &modules, &configs);
-    } else if cli.live {
+    } else if is_live {
         run_live(&config, &cli, &modules, &configs);
     } else {
         run_once(&config, &cli, &modules, &configs);
@@ -273,12 +298,39 @@ fn run_once(
         None
     };
 
+    let (logo_block, distro_color) = if show_logo && resolved_image_path.is_none() {
+        let distro_name = if config.general.logo.distro == "auto" {
+            detect_distro_name()
+        } else {
+            config.general.logo.distro.clone()
+        };
+        let logo = logos::get_logo(&distro_name);
+        (
+            Some(LogoBlock {
+                lines: logo.colored_lines(),
+                width: logo.width,
+            }),
+            Some(logo.color),
+        )
+    } else {
+        (None, None)
+    };
+
+    if let Some(c) = &cli.color {
+        dynamic_color = Some(c.clone());
+    }
+
+    let header_color = dynamic_color
+        .as_deref()
+        .or(distro_color);
+
     let info_lines = gather_info_lines(config, modules, configs, dynamic_color.as_deref());
 
     let header = build_header();
 
     let render_opts = layout::RenderOptions {
         header: header.as_deref(),
+        header_color,
         separator: &config.general.separator,
         padding: config.general.padding,
         center: config.general.center,
@@ -358,21 +410,6 @@ fn run_once(
             }
         }
     }
-
-    let logo_block = if show_logo {
-        let distro_name = if config.general.logo.distro == "auto" {
-            detect_distro_name()
-        } else {
-            config.general.logo.distro.clone()
-        };
-        let logo = logos::get_logo(&distro_name);
-        Some(LogoBlock {
-            lines: logo.colored_lines(),
-            width: logo.width,
-        })
-    } else {
-        None
-    };
 
     layout::render(logo_block.as_ref(), &info_lines, &render_opts);
 }
@@ -580,28 +617,25 @@ fn gather_info_lines(
 }
 
 fn build_right_lines(info_lines: &[InfoLine], opts: &layout::RenderOptions) -> Vec<String> {
-    let mut right_lines: Vec<String> = Vec::new();
+    layout::build_right_lines(info_lines, opts)
+}
 
-    if let Some(h) = opts.header {
-        right_lines.push(format!("{BOLD}{}{h}{RESET}", color_code("cyan")));
-        right_lines.push(format!(
-            "{DIM}{}{RESET}",
-            "─".repeat(unicode_width::UnicodeWidthStr::width(h))
-        ));
+#[cfg(unix)]
+static mut ORIG_TERMIOS: Option<libc::termios> = None;
+
+#[cfg(unix)]
+extern "C" fn handle_sigint(_: libc::c_int) {
+    unsafe {
+        if let Some(ref orig) = ORIG_TERMIOS {
+            libc::tcsetattr(libc::STDIN_FILENO, libc::TCSANOW, orig);
+        }
+        libc::write(
+            libc::STDOUT_FILENO,
+            b"\x1b[?1002l\x1b[?1006l\x1b[?25h\n".as_ptr() as *const _,
+            23,
+        );
+        libc::_exit(0);
     }
-
-    right_lines.extend(layout::format_info_lines(info_lines, opts.separator));
-
-    if let Some(pal) = opts.palette_lines {
-        right_lines.push(String::new());
-        right_lines.extend(pal.iter().cloned());
-    }
-
-    if opts.border {
-        right_lines = layout::wrap_in_box(&right_lines);
-    }
-
-    right_lines
 }
 
 fn run_3d(
@@ -611,9 +645,9 @@ fn run_3d(
     configs: &[rustfetch_core::config::ModuleConfig],
 ) {
     use crossterm::{
-        cursor::{Hide, Show},
+        cursor::Hide,
         execute,
-        terminal::{disable_raw_mode, enable_raw_mode, Clear, ClearType},
+        terminal::{Clear, ClearType},
     };
     use std::time::{Duration, Instant};
 
@@ -692,8 +726,15 @@ fn run_3d(
     };
 
     let header = build_header();
+    let header_color = cli
+        .color
+        .as_deref()
+        .or(config.general.logo.three_d.outer_color.as_deref())
+        .or(Some(distro_outer));
+
     let render_opts = layout::RenderOptions {
         header: header.as_deref(),
+        header_color,
         separator: &config.general.separator,
         padding: config.general.padding,
         center: config.general.center,
@@ -705,17 +746,56 @@ fn run_3d(
     let mut right_lines = build_right_lines(&info_lines, &render_opts);
 
     // RAII guard to guarantee raw mode is disabled and cursor restored on exit or panic
-    struct TermGuard;
+    struct TermGuard {
+        #[cfg(unix)]
+        orig_termios: Option<libc::termios>,
+    }
     impl Drop for TermGuard {
         fn drop(&mut self) {
-            let _ = crossterm::terminal::disable_raw_mode();
+            #[cfg(unix)]
+            unsafe {
+                if let Some(ref orig) = self.orig_termios {
+                    libc::tcsetattr(libc::STDIN_FILENO, libc::TCSANOW, orig);
+                }
+                libc::signal(libc::SIGINT, libc::SIG_DFL);
+                libc::signal(libc::SIGTERM, libc::SIG_DFL);
+            }
+            #[cfg(not(unix))]
+            {
+                let _ = crossterm::terminal::disable_raw_mode();
+            }
             let _ = crossterm::execute!(std::io::stdout(), crossterm::cursor::Show);
+            let _ = std::io::stdout().flush();
         }
     }
-    let _guard = TermGuard;
+
+    #[cfg(unix)]
+    let mut orig_termios = None;
+    #[cfg(unix)]
+    unsafe {
+        let mut orig: libc::termios = std::mem::zeroed();
+        if libc::tcgetattr(libc::STDIN_FILENO, &mut orig) == 0 {
+            orig_termios = Some(orig);
+            ORIG_TERMIOS = Some(orig);
+            let mut raw = orig;
+            // Retain ISIG so Ctrl+C sends SIGINT natively without buffering
+            raw.c_lflag &= !(libc::ICANON | libc::ECHO);
+            raw.c_cc[libc::VMIN] = 0;
+            raw.c_cc[libc::VTIME] = 0;
+            libc::tcsetattr(libc::STDIN_FILENO, libc::TCSAFLUSH, &raw);
+        }
+        libc::signal(libc::SIGINT, handle_sigint as *const () as libc::sighandler_t);
+        libc::signal(libc::SIGTERM, handle_sigint as *const () as libc::sighandler_t);
+    }
+    #[cfg(not(unix))]
+    let _ = crossterm::terminal::enable_raw_mode();
+
+    let _guard = TermGuard {
+        #[cfg(unix)]
+        orig_termios,
+    };
 
     let mut stdout = std::io::stdout();
-    let _ = enable_raw_mode();
     let _ = execute!(
         stdout,
         Hide,
@@ -729,7 +809,13 @@ fn run_3d(
     let mut frame_idx = 0usize;
     let mut last_metric_refresh = Instant::now();
 
-    let max_frames = cli.frames.or(config.general.logo.three_d.frames);
+    let max_frames = if cli.infinite {
+        None
+    } else {
+        cli.frames.or(config.general.logo.three_d.frames)
+    };
+
+    let exit_on_key = !cli.hold && (cli.exit_on_key || config.general.logo.three_d.exit_on_key.unwrap_or(true));
 
     loop {
         if let Some(limit) = max_frames {
@@ -767,8 +853,8 @@ fn run_3d(
         let target_width = cli
             .width
             .or(config.general.logo.three_d.width)
-            .unwrap_or(config.general.logo.image_width_cols)
-            .max(30);
+            .unwrap_or(config.general.logo.image_width_cols.min(42))
+            .max(25);
 
         let needed_cols = target_width + layout::LOGO_GAP + right_width;
         let layout_stacked = term_cols < needed_cols;
@@ -780,15 +866,15 @@ fn run_3d(
         };
 
         let canvas_rows = if layout_stacked {
-            let max_stacked_h = (canvas_cols * 3 / 5).clamp(16, 36);
+            let max_stacked_h = (canvas_cols * 3 / 5).clamp(14, 24);
             cli.height
                 .or(config.general.logo.three_d.height)
                 .unwrap_or(max_stacked_h)
         } else {
-            let ideal_h = (canvas_cols * 3 / 5).max(36);
+            let ideal_h = (canvas_cols * 3 / 5).clamp(18, 24);
             cli.height
                 .or(config.general.logo.three_d.height)
-                .unwrap_or(ideal_h.max(right_lines.len()))
+                .unwrap_or(ideal_h.max(right_lines.len().min(24)))
         };
 
         // Render 3D Logo
@@ -858,8 +944,7 @@ fn run_3d(
 
         frame_idx += 1;
 
-        // Poll input: only exit on Ctrl+C (0x03) or 'q' / 'Q'.
-        // Consume and drain all other typed keys so the 3D logo keeps spinning continuously!
+        // Poll input: exit on keypress (allowing shell commands to execute) or if hold mode is active, only on Ctrl+C / q
         #[cfg(unix)]
         {
             use std::os::unix::io::AsRawFd;
@@ -871,12 +956,24 @@ fn run_3d(
             };
             let ret = unsafe { libc::poll(&mut pfd, 1, 33) };
             if ret > 0 && (pfd.revents & libc::POLLIN) != 0 {
-                let mut buf = [0u8; 128];
-                let n = unsafe { libc::read(fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len()) };
-                if n > 0 {
-                    let bytes = &buf[..n as usize];
-                    if bytes.iter().any(|&b| b == 3 || b == b'q' || b == b'Q') {
+                let mut avail: libc::c_int = 0;
+                unsafe { libc::ioctl(fd, libc::FIONREAD, &mut avail) };
+                if avail > 0 {
+                    if exit_on_key {
+                        // User started typing: leave all bytes in stdin for the shell and exit immediately!
                         break;
+                    }
+
+                    let mut ibuf = [0u8; 128];
+                    let to_read = (avail as usize).min(ibuf.len());
+                    let n = unsafe {
+                        libc::read(fd, ibuf.as_mut_ptr() as *mut libc::c_void, to_read)
+                    };
+                    if n > 0 {
+                        let bytes = &ibuf[..n as usize];
+                        if bytes.iter().any(|&b| b == b'q' || b == b'Q' || b == 3) {
+                            break;
+                        }
                     }
                 }
             }
@@ -885,6 +982,10 @@ fn run_3d(
         {
             if let Ok(ready) = crossterm::event::poll(Duration::from_millis(33)) {
                 if ready {
+                    if exit_on_key {
+                        let _ = crossterm::event::read();
+                        break;
+                    }
                     if let Ok(crossterm::event::Event::Key(key)) = crossterm::event::read() {
                         if (key.code == crossterm::event::KeyCode::Char('c')
                             && key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL))
@@ -898,10 +999,6 @@ fn run_3d(
             }
         }
     }
-
-    let _ = disable_raw_mode();
-    let _ = execute!(stdout, Show);
-    let _ = stdout.flush();
 }
 
 fn run_live(

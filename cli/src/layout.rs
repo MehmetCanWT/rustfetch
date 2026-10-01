@@ -57,6 +57,9 @@ pub fn rgb_to_ansi(r: u8, g: u8, b: u8) -> &'static str {
 }
 
 pub fn color_code(name: &str) -> String {
+    if name.starts_with("\x1b[") {
+        return name.to_string();
+    }
     if name.starts_with('#') {
         let hex = name.trim_start_matches('#');
         if let Ok(rgb) = u32::from_str_radix(hex, 16) {
@@ -78,23 +81,23 @@ pub fn color_code(name: &str) -> String {
     }
 
     let code = match name.to_lowercase().as_str() {
-        "black" => "\x1b[30m",
-        "red" => "\x1b[31m",
-        "green" => "\x1b[32m",
-        "yellow" => "\x1b[33m",
-        "blue" => "\x1b[34m",
-        "magenta" => "\x1b[35m",
-        "cyan" => "\x1b[36m",
-        "white" => "\x1b[37m",
-        "bright_black" | "gray" | "grey" => "\x1b[90m",
-        "bright_red" => "\x1b[91m",
-        "bright_green" => "\x1b[92m",
-        "bright_yellow" => "\x1b[93m",
-        "bright_blue" => "\x1b[94m",
-        "bright_magenta" => "\x1b[95m",
-        "bright_cyan" => "\x1b[96m",
-        "bright_white" => "\x1b[97m",
-        _ => "\x1b[37m",
+        "black" => "\x1b[38;2;20;20;20m",
+        "red" => "\x1b[38;2;239;83;80m",
+        "green" => "\x1b[38;2;76;175;80m",
+        "yellow" => "\x1b[38;2;255;193;7m",
+        "blue" => "\x1b[38;2;66;165;245m",
+        "magenta" => "\x1b[38;2;186;104;200m",
+        "cyan" => "\x1b[38;2;38;198;218m",
+        "white" => "\x1b[38;2;245;245;245m",
+        "bright_black" | "gray" | "grey" => "\x1b[38;2;140;140;140m",
+        "bright_red" => "\x1b[38;2;255;82;82m",
+        "bright_green" => "\x1b[38;2;105;240;174m",
+        "bright_yellow" => "\x1b[38;2;255;215;64m",
+        "bright_blue" => "\x1b[38;2;68;138;255m",
+        "bright_magenta" => "\x1b[38;2;224;64;251m",
+        "bright_cyan" => "\x1b[38;2;24;255;255m",
+        "bright_white" => "\x1b[38;2;255;255;255m",
+        _ => "\x1b[38;2;245;245;245m",
     };
     code.to_string()
 }
@@ -204,11 +207,38 @@ pub fn build_color_palette(
 
 pub struct RenderOptions<'a> {
     pub header: Option<&'a str>,
+    pub header_color: Option<&'a str>,
     pub separator: &'a str,
     pub padding: usize,
     pub center: bool,
     pub border: bool,
     pub palette_lines: Option<&'a [String]>,
+}
+
+pub fn build_right_lines(info_lines: &[InfoLine], opts: &RenderOptions) -> Vec<String> {
+    let mut right_lines: Vec<String> = Vec::new();
+
+    if let Some(h) = opts.header {
+        let col = opts.header_color.unwrap_or("cyan");
+        right_lines.push(format!("{BOLD}{}{h}{RESET}", color_code(col)));
+        right_lines.push(format!(
+            "{DIM}{}{RESET}",
+            "─".repeat(UnicodeWidthStr::width(h))
+        ));
+    }
+
+    right_lines.extend(format_info_lines(info_lines, opts.separator));
+
+    if let Some(pal) = opts.palette_lines {
+        right_lines.push(String::new());
+        right_lines.extend(pal.iter().cloned());
+    }
+
+    if opts.border {
+        right_lines = wrap_in_box(&right_lines);
+    }
+
+    right_lines
 }
 
 pub fn wrap_in_box(lines: &[String]) -> Vec<String> {
@@ -306,26 +336,7 @@ pub fn render_with_image(
     info_lines: &[InfoLine],
     opts: &RenderOptions,
 ) {
-    let mut right_lines: Vec<String> = Vec::new();
-
-    if let Some(h) = opts.header {
-        right_lines.push(format!("{BOLD}{}{h}{RESET}", color_code("cyan")));
-        right_lines.push(format!(
-            "{DIM}{}{RESET}",
-            "─".repeat(UnicodeWidthStr::width(h))
-        ));
-    }
-
-    right_lines.extend(format_info_lines(info_lines, opts.separator));
-
-    if let Some(pal) = opts.palette_lines {
-        right_lines.push(String::new());
-        right_lines.extend(pal.iter().cloned());
-    }
-
-    if opts.border {
-        right_lines = wrap_in_box(&right_lines);
-    }
+    let mut right_lines = build_right_lines(info_lines, opts);
 
     if opts.center && image_lines > right_lines.len() {
         let v_offset = (image_lines - right_lines.len()) / 2;
@@ -360,26 +371,7 @@ fn render_with_logo(
     term_w: usize,
     opts: &RenderOptions,
 ) {
-    let mut right_lines: Vec<String> = Vec::new();
-
-    if let Some(h) = opts.header {
-        right_lines.push(format!("{BOLD}{}{h}{RESET}", color_code("cyan")));
-        right_lines.push(format!(
-            "{DIM}{}{RESET}",
-            "─".repeat(UnicodeWidthStr::width(h))
-        ));
-    }
-
-    right_lines.extend(format_info_lines(info_lines, opts.separator));
-
-    if let Some(pal) = opts.palette_lines {
-        right_lines.push(String::new());
-        right_lines.extend(pal.iter().cloned());
-    }
-
-    if opts.border {
-        right_lines = wrap_in_box(&right_lines);
-    }
+    let mut right_lines = build_right_lines(info_lines, opts);
 
     if opts.center && logo.lines.len() > right_lines.len() {
         let v_offset = (logo.lines.len() - right_lines.len()) / 2;
@@ -402,6 +394,11 @@ fn render_with_logo(
     };
 
     let total_lines = logo.lines.len().max(right_lines.len());
+    let logo_v_offset = if right_lines.len() > logo.lines.len() {
+        (right_lines.len() - logo.lines.len()) / 2
+    } else {
+        0
+    };
     let logo_pad_str = " ".repeat(logo.width);
     let gap = " ".repeat(LOGO_GAP);
 
@@ -413,11 +410,16 @@ fn render_with_logo(
         } else {
             right_line.to_string()
         };
-        if let Some(logo_line) = logo.lines.get(i) {
+        let logo_idx = if i >= logo_v_offset && i < logo_v_offset + logo.lines.len() {
+            Some(i - logo_v_offset)
+        } else {
+            None
+        };
+        if let Some(l_str) = logo_idx.and_then(|idx| logo.lines.get(idx)) {
             let logo_to_print = if disable_colors {
-                strip_ansi(logo_line)
+                strip_ansi(l_str)
             } else {
-                logo_line.to_string()
+                l_str.to_string()
             };
             let logo_visual_w = strip_ansi_width(&logo_to_print);
             let logo_trailing = " ".repeat(logo.width.saturating_sub(logo_visual_w));
@@ -429,24 +431,7 @@ fn render_with_logo(
 }
 
 fn render_without_logo(info_lines: &[InfoLine], pad: &str, term_w: usize, opts: &RenderOptions) {
-    let mut right_lines: Vec<String> = Vec::new();
-    if let Some(h) = opts.header {
-        right_lines.push(format!("{BOLD}{}{h}{RESET}", color_code("cyan")));
-        right_lines.push(format!(
-            "{DIM}{}{RESET}",
-            "─".repeat(UnicodeWidthStr::width(h))
-        ));
-    }
-    right_lines.extend(format_info_lines(info_lines, opts.separator));
-
-    if let Some(pal) = opts.palette_lines {
-        right_lines.push(String::new());
-        right_lines.extend(pal.iter().cloned());
-    }
-
-    if opts.border {
-        right_lines = wrap_in_box(&right_lines);
-    }
+    let right_lines = build_right_lines(info_lines, opts);
 
     let max_w = right_lines
         .iter()
@@ -514,7 +499,7 @@ mod tests {
 
     #[test]
     fn test_color_code() {
-        assert_eq!(color_code("red"), "\x1b[31m");
+        assert_eq!(color_code("red"), "\x1b[38;2;239;83;80m");
     }
 
     #[test]
@@ -590,5 +575,29 @@ mod tests {
         assert!(boxed[2].contains("World!"));
         assert!(boxed[3].starts_with('╰'));
         assert!(boxed[3].ends_with('╯'));
+    }
+
+    #[test]
+    fn test_build_right_lines_header_color() {
+        let info = vec![InfoLine {
+            label: "OS".into(),
+            value: "Linux".into(),
+            icon: None,
+            color: "\x1b[34m".into(),
+        }];
+        let opts = RenderOptions {
+            header: Some("user@host"),
+            header_color: Some("#ff007f"),
+            separator: ":",
+            padding: 1,
+            center: false,
+            border: false,
+            palette_lines: None,
+        };
+        let lines = build_right_lines(&info, &opts);
+        assert_eq!(lines.len(), 3);
+        // Header line must contain the 24-bit TrueColor for #ff007f (255, 0, 127)
+        assert!(lines[0].contains("\x1b[38;2;255;0;127m"));
+        assert!(lines[0].contains("user@host"));
     }
 }

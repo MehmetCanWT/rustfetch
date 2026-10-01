@@ -204,22 +204,22 @@ CONFIG_FILE="$CONFIG_DIR/config.toml"
 
 echo ""
 echo -e "${BLUE}==>${NC} Choose default logo display mode:"
-echo -e "  ${GREEN}1)${NC} 3D Animated   — Real-time spinning 3D ASCII relief logo (like areofyl/fetch)"
-echo -e "  ${GREEN}2)${NC} Standard 2D   — Classic fastfetch-style static ASCII logo"
+echo -e "  ${GREEN}1)${NC} Standard 2D   — Classic fastfetch-style static ASCII (~4ms, recommended for .bashrc) [Default]"
+echo -e "  ${GREEN}2)${NC} 3D Animated   — Real-time spinning 3D ASCII relief logo (can also run anytime with 'rfetch --3d')"
 
-MODE_CHOICE="3d"
+MODE_CHOICE="2d"
 if [ -t 0 ] || [ -c /dev/tty ]; then
     read -rp "Select mode [1-2] (default: 1): " USER_INPUT </dev/tty 2>/dev/null || USER_INPUT="1"
     case "$USER_INPUT" in
-        2|"2d"|"normal"|"standard")
-            MODE_CHOICE="2d"
+        2|"3d"|"animated"|"three_d")
+            MODE_CHOICE="3d"
             ;;
         *)
-            MODE_CHOICE="3d"
+            MODE_CHOICE="2d"
             ;;
     esac
 else
-    MODE_CHOICE="3d"
+    MODE_CHOICE="2d"
 fi
 
 if [ "$MODE_CHOICE" = "3d" ]; then
@@ -264,7 +264,8 @@ else
     if [ -f "$CONFIG_FILE" ]; then
         if grep -q "\[general\.logo\.three_d\]" "$CONFIG_FILE"; then
             sed -i '/\[general\.logo\.three_d\]/,/^\[/ s/enabled = .*/enabled = false/' "$CONFIG_FILE"
-        elif grep -q "3d = true" "$CONFIG_FILE"; then
+        fi
+        if grep -q "3d = true" "$CONFIG_FILE"; then
             sed -i 's/3d = true/3d = false/' "$CONFIG_FILE"
         fi
     else

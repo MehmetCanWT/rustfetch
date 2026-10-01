@@ -148,8 +148,8 @@ RustFetch features an authentic, real-time 3D ASCII rendering engine inspired by
   - **Arch:** Arch Cyan `#1793d1` + Light Cyan `#33a2e6`
   - **Ubuntu:** Ubuntu Orange `#e95420` + Pure White `#ffffff`
   - **Debian:** Debian Red `#d70a53` + Pure White `#ffffff`
-- **Large & Configurable Canvas (`image_width_cols = 60`):** By default, 3D models render at a glorious 60 columns wide and 34–36 rows tall. Automatically normalizes compact ASCII logos so they fill the canvas with full relief depth.
-- **Continuous Non-Stop Animation:** Runs natively in the terminal buffer without interrupting when you type commands. Pressing **`Ctrl+C`** or **`q`** cleanly restores the terminal and exits.
+- **Seamless Typing Handover (`exit_on_key = true`):** The 3D animation spins continuously on terminal startup. The instant you type any command or key, the 3D loop breaks immediately without consuming your keystroke(s)—leaving your typed characters directly in your shell prompt (Bash, Zsh, Fish) and freezing the rendered fetch output cleanly displayed above. You can also exit with **`Ctrl+C`** or **`q`**.
+- **Dynamic Adaptive Theming:** In random image mode or image mode, the title header (`user@host`) and module icons dynamically adapt to the extracted dominant color of the image. In distro logo mode, the authentic 24-bit TrueColor of the distribution is used.
 - **Interactive Installer Menu:** Running `./install.sh` displays an interactive prompt allowing you to set 3D Animated mode or Standard 2D mode as your default.
 
 ```bash
@@ -225,13 +225,16 @@ Options:
 | `wm` | Window Manager | Wayland socket or X11 property inspection |
 | `terminal` | Terminal emulator | Parent PID inspection via `/proc/$PID/stat` |
 | `cpu` | Processor model, cores, frequency & temperature | `/proc/cpuinfo` & `/sys/class/hwmon` |
+| `cpu_usage` | Real-time CPU load percentage & progress meter | `/proc/stat` jiffies delta |
 | `gpu` | Dedicated & integrated graphics cards | PCI class scan in `/sys/bus/pci/devices` via `pci.ids` |
 | `memory` | RAM usage, total, and percentage progress bar | `/proc/meminfo` |
 | `swap` | Swap space usage & percentage | `/proc/meminfo` |
 | `disk` | Filesystem mount usage & capacity | `libc::statvfs` |
-| `battery` | Battery state, capacity, and progress bar | `/sys/class/power_supply` |
+| `battery` | Battery capacity, status, health % & cycle count | `/sys/class/power_supply/BAT*` |
+| `brightness` | Display backlight brightness percentage & bar | `/sys/class/backlight` sysfs |
 | `sound` | Audio sink volume & mute status | WirePlumber (`wpctl`) / PulseAudio |
-| `wifi` | Wireless network SSID & signal strength | `/sys/class/net` & `iw dev link` / `iwgetid` |
+| `wifi` | Wireless SSID, signal quality (dBm & %), band (5GHz/6GHz) | `iw dev link` with `nmcli` fallback |
+| `bluetooth` | Connected Bluetooth devices & battery levels | `bluetoothctl` & `/sys/class/power_supply` |
 | `processes` | Total running processes & 1-minute load average | `/proc/loadavg` & PID count |
 | `media` | Currently playing MPRIS track (artist - title) | Optional module via `playerctl` (disabled by default) |
 | `colors` | ANSI color palette preview (dots or blocks) | Terminal color sequence blocks |

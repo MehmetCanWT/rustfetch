@@ -3,6 +3,33 @@
 /// ANSI reset code.
 pub const RESET: &str = "\x1b[0m";
 
+// Authentic 24-bit TrueColor RGB escape codes that completely bypass Kitty themes and terminal palettes
+pub const FEDORA_BLUE: &str = "\x1b[38;2;60;110;180m"; // #3c6eb4
+pub const ARCH_CYAN: &str = "\x1b[38;2;23;147;209m";   // #1793d1
+pub const ARCH_LIGHT: &str = "\x1b[38;2;81;190;240m";  // #51bef0
+pub const GENTOO_PURPLE: &str = "\x1b[38;2;186;150;226m"; // #ba96e2
+pub const UBUNTU_ORANGE: &str = "\x1b[38;2;233;84;32m";   // #e95420
+pub const DEBIAN_RED: &str = "\x1b[38;2;215;10;83m";      // #d70a53
+pub const MINT_GREEN: &str = "\x1b[38;2;135;207;128m";    // #87cf80
+pub const MANJARO_GREEN: &str = "\x1b[38;2;53;191;92m";   // #35bf5c
+pub const SUSE_GREEN: &str = "\x1b[38;2;115;186;37m";     // #73ba25
+pub const NIXOS_BLUE: &str = "\x1b[38;2;82;119;195m";     // #5277c3
+pub const NIXOS_CYAN: &str = "\x1b[38;2;126;186;228m";    // #7ebae4
+pub const VOID_GREEN: &str = "\x1b[38;2;71;128;97m";      // #478061
+pub const POP_TEAL: &str = "\x1b[38;2;72;185;199m";       // #48b9c7
+pub const POP_ORANGE: &str = "\x1b[38;2;255;160;0m";      // #ffa000
+pub const ALPINE_BLUE: &str = "\x1b[38;2;13;89;127m";     // #0d597f
+pub const KALI_BLUE: &str = "\x1b[38;2;85;124;148m";      // #557c94
+pub const STEAM_BLUE: &str = "\x1b[38;2;26;159;255m";     // #1a9fff
+pub const ARTIX_CYAN: &str = "\x1b[38;2;23;147;209m";
+pub const ZORIN_BLUE: &str = "\x1b[38;2;0;163;255m";
+pub const RASPBIAN_RED: &str = "\x1b[38;2;197;26;74m";
+pub const RASPBIAN_GREEN: &str = "\x1b[38;2;117;169;40m";
+pub const REDHAT_RED: &str = "\x1b[38;2;238;0;0m";
+pub const TUX_YELLOW: &str = "\x1b[38;2;255;193;7m";
+pub const TUX_DARK: &str = "\x1b[38;2;50;50;50m";
+pub const WHITE: &str = "\x1b[38;2;255;255;255m";
+
 /// A terminal-printable ASCII logo.
 #[derive(Debug, Clone)]
 pub struct Logo {
@@ -156,8 +183,8 @@ fn fedora() -> Logo {
     let width = compute_logo_width(&lines);
     Logo {
         lines,
-        color: "\x1b[34m",
-        colors: vec!["\x1b[34m", "\x1b[37m"],
+        color: FEDORA_BLUE,
+        colors: vec![FEDORA_BLUE, WHITE],
         width,
     }
 }
@@ -187,8 +214,8 @@ fn arch() -> Logo {
     let width = compute_logo_width(&lines);
     Logo {
         lines,
-        color: "\x1b[36m",
-        colors: vec!["\x1b[36m", "\x1b[96m"],
+        color: ARCH_CYAN,
+        colors: vec![ARCH_CYAN, ARCH_LIGHT],
         width,
     }
 }
@@ -216,8 +243,8 @@ fn debian() -> Logo {
     let width = compute_logo_width(&lines);
     Logo {
         lines,
-        color: "\x1b[31m",
-        colors: vec!["\x1b[37m", "\x1b[31m"],
+        color: DEBIAN_RED,
+        colors: vec![WHITE, DEBIAN_RED],
         width,
     }
 }
@@ -248,8 +275,8 @@ fn ubuntu() -> Logo {
     let width = compute_logo_width(&lines);
     Logo {
         lines,
-        color: "\x1b[33m",
-        colors: vec!["\x1b[33m", "\x1b[37m"],
+        color: UBUNTU_ORANGE,
+        colors: vec![UBUNTU_ORANGE, WHITE],
         width,
     }
 }
@@ -279,8 +306,8 @@ fn mint() -> Logo {
     let width = compute_logo_width(&lines);
     Logo {
         lines,
-        color: "\x1b[32m",
-        colors: vec!["\x1b[32m", "\x1b[37m"],
+        color: MINT_GREEN,
+        colors: vec![MINT_GREEN, WHITE],
         width,
     }
 }
@@ -305,8 +332,8 @@ fn manjaro() -> Logo {
     let width = compute_logo_width(&lines);
     Logo {
         lines,
-        color: "\x1b[32m",
-        colors: vec!["\x1b[32m"],
+        color: MANJARO_GREEN,
+        colors: vec![MANJARO_GREEN],
         width,
     }
 }
@@ -337,8 +364,8 @@ fn pop() -> Logo {
     let width = compute_logo_width(&lines);
     Logo {
         lines,
-        color: "\x1b[36m",
-        colors: vec!["\x1b[36m", "\x1b[33m"],
+        color: POP_TEAL,
+        colors: vec![POP_TEAL, POP_ORANGE],
         width,
     }
 }
@@ -369,8 +396,8 @@ fn alpine() -> Logo {
     let width = compute_logo_width(&lines);
     Logo {
         lines,
-        color: "\x1b[34m",
-        colors: vec!["\x1b[34m"],
+        color: ALPINE_BLUE,
+        colors: vec![ALPINE_BLUE, WHITE],
         width,
     }
 }
@@ -399,8 +426,8 @@ fn void() -> Logo {
     let width = compute_logo_width(&lines);
     Logo {
         lines,
-        color: "\x1b[32m",
-        colors: vec!["\x1b[32m", "\x1b[37m"],
+        color: VOID_GREEN,
+        colors: vec![VOID_GREEN, WHITE],
         width,
     }
 }
@@ -429,8 +456,8 @@ fn gentoo() -> Logo {
     let width = compute_logo_width(&lines);
     Logo {
         lines,
-        color: "\x1b[35m",
-        colors: vec!["\x1b[37m", "\x1b[35m"],
+        color: GENTOO_PURPLE,
+        colors: vec![WHITE, GENTOO_PURPLE],
         width,
     }
 }
@@ -461,9 +488,9 @@ fn nixos() -> Logo {
     let width = compute_logo_width(&lines);
     Logo {
         lines,
-        color: "\x1b[36m",
+        color: NIXOS_CYAN,
         colors: vec![
-            "\x1b[94m", "\x1b[36m", "\x1b[34m", "\x1b[96m", "\x1b[34m", "\x1b[94m",
+            NIXOS_BLUE, NIXOS_CYAN, NIXOS_BLUE, NIXOS_CYAN, NIXOS_BLUE, NIXOS_CYAN,
         ],
         width,
     }
@@ -497,8 +524,8 @@ fn opensuse() -> Logo {
     let width = compute_logo_width(&lines);
     Logo {
         lines,
-        color: "\x1b[32m",
-        colors: vec!["\x1b[32m"],
+        color: SUSE_GREEN,
+        colors: vec![SUSE_GREEN],
         width,
     }
 }
@@ -524,8 +551,8 @@ fn endeavour() -> Logo {
     let width = compute_logo_width(&lines);
     Logo {
         lines,
-        color: "\x1b[35m",
-        colors: vec!["\x1b[35m", "\x1b[31m", "\x1b[34m"],
+        color: GENTOO_PURPLE,
+        colors: vec![GENTOO_PURPLE, DEBIAN_RED, ARCH_CYAN],
         width,
     }
 }
@@ -557,8 +584,8 @@ fn kali() -> Logo {
     let width = compute_logo_width(&lines);
     Logo {
         lines,
-        color: "\x1b[34m",
-        colors: vec!["\x1b[34m", "\x1b[37m"],
+        color: KALI_BLUE,
+        colors: vec![KALI_BLUE, WHITE],
         width,
     }
 }
@@ -587,8 +614,8 @@ fn steamos() -> Logo {
     let width = compute_logo_width(&lines);
     Logo {
         lines,
-        color: "\x1b[36m",
-        colors: vec!["\x1b[36m", "\x1b[37m"],
+        color: STEAM_BLUE,
+        colors: vec![STEAM_BLUE, WHITE],
         width,
     }
 }
@@ -619,8 +646,8 @@ fn artix() -> Logo {
     let width = compute_logo_width(&lines);
     Logo {
         lines,
-        color: "\x1b[36m",
-        colors: vec!["\x1b[36m"],
+        color: ARTIX_CYAN,
+        colors: vec![ARTIX_CYAN],
         width,
     }
 }
@@ -649,8 +676,8 @@ fn redhat() -> Logo {
     let width = compute_logo_width(&lines);
     Logo {
         lines,
-        color: "\x1b[31m",
-        colors: vec!["\x1b[31m"],
+        color: REDHAT_RED,
+        colors: vec![REDHAT_RED],
         width,
     }
 }
@@ -680,8 +707,8 @@ fn rocky() -> Logo {
     let width = compute_logo_width(&lines);
     Logo {
         lines,
-        color: "\x1b[31m",
-        colors: vec!["\x1b[31m", "\x1b[32m"],
+        color: SUSE_GREEN,
+        colors: vec![SUSE_GREEN, REDHAT_RED],
         width,
     }
 }
@@ -712,8 +739,8 @@ fn almalinux() -> Logo {
     let width = compute_logo_width(&lines);
     Logo {
         lines,
-        color: "\x1b[31m",
-        colors: vec!["\x1b[31m", "\x1b[33m", "\x1b[32m", "\x1b[36m", "\x1b[34m"],
+        color: DEBIAN_RED,
+        colors: vec![DEBIAN_RED, TUX_YELLOW, SUSE_GREEN, ARCH_CYAN, FEDORA_BLUE],
         width,
     }
 }
@@ -743,8 +770,8 @@ fn centos() -> Logo {
     let width = compute_logo_width(&lines);
     Logo {
         lines,
-        color: "\x1b[31m",
-        colors: vec!["\x1b[31m", "\x1b[32m", "\x1b[34m", "\x1b[35m"],
+        color: REDHAT_RED,
+        colors: vec![REDHAT_RED, SUSE_GREEN, FEDORA_BLUE, GENTOO_PURPLE],
         width,
     }
 }
@@ -772,8 +799,8 @@ fn zorin() -> Logo {
     let width = compute_logo_width(&lines);
     Logo {
         lines,
-        color: "\x1b[36m",
-        colors: vec!["\x1b[36m"],
+        color: ZORIN_BLUE,
+        colors: vec![ZORIN_BLUE],
         width,
     }
 }
@@ -807,8 +834,8 @@ fn raspbian() -> Logo {
     let width = compute_logo_width(&lines);
     Logo {
         lines,
-        color: "\x1b[31m",
-        colors: vec!["\x1b[32m", "\x1b[31m"],
+        color: RASPBIAN_RED,
+        colors: vec![RASPBIAN_GREEN, RASPBIAN_RED],
         width,
     }
 }
@@ -831,8 +858,8 @@ fn linux() -> Logo {
     let width = compute_logo_width(&lines);
     Logo {
         lines,
-        color: "\x1b[37m",
-        colors: vec!["\x1b[37m", "\x1b[90m", "\x1b[33m"],
+        color: WHITE,
+        colors: vec![WHITE, TUX_DARK, TUX_YELLOW],
         width,
     }
 }
@@ -845,7 +872,7 @@ mod tests {
     fn test_get_logo_fedora() {
         let logo = get_logo("fedora");
         assert!(!logo.lines.is_empty());
-        assert_eq!(logo.color, "\x1b[34m");
+        assert_eq!(logo.color, FEDORA_BLUE);
     }
 
     #[test]
@@ -861,14 +888,14 @@ mod tests {
     fn test_get_logo_arch() {
         let logo = get_logo("arch");
         assert!(!logo.lines.is_empty());
-        assert_eq!(logo.color, "\x1b[36m");
+        assert_eq!(logo.color, ARCH_CYAN);
     }
 
     #[test]
     fn test_get_logo_unknown_returns_linux() {
         let logo = get_logo("totally_unknown_distro");
         assert!(!logo.lines.is_empty());
-        assert_eq!(logo.color, "\x1b[37m");
+        assert_eq!(logo.color, WHITE);
     }
 
     #[test]
@@ -876,26 +903,26 @@ mod tests {
         let logo = get_logo("fedora");
         let colored = logo.colored_lines();
         assert_eq!(colored.len(), logo.lines.len());
-        assert!(colored[0].starts_with("\x1b["));
+        assert!(colored[0].starts_with("\x1b[38;2;"));
     }
 
     #[test]
     fn test_all_expanded_distros_return_correct_logos() {
-        assert_eq!(get_logo("Linux Mint").color, "\x1b[32m");
-        assert_eq!(get_logo("Manjaro Linux").color, "\x1b[32m");
-        assert_eq!(get_logo("Pop!_OS").color, "\x1b[36m");
-        assert_eq!(get_logo("Alpine Linux").color, "\x1b[34m");
-        assert_eq!(get_logo("Void Linux").color, "\x1b[32m");
-        assert_eq!(get_logo("Gentoo").color, "\x1b[35m");
-        assert_eq!(get_logo("EndeavourOS").color, "\x1b[35m");
-        assert_eq!(get_logo("Kali GNU/Linux").color, "\x1b[34m");
-        assert_eq!(get_logo("SteamOS").color, "\x1b[36m");
-        assert_eq!(get_logo("Artix Linux").color, "\x1b[36m");
-        assert_eq!(get_logo("Red Hat Enterprise Linux").color, "\x1b[31m");
-        assert_eq!(get_logo("Rocky Linux").color, "\x1b[31m");
-        assert_eq!(get_logo("CentOS Stream").color, "\x1b[31m");
-        assert_eq!(get_logo("AlmaLinux").color, "\x1b[31m");
-        assert_eq!(get_logo("Zorin OS").color, "\x1b[36m");
-        assert_eq!(get_logo("Raspbian").color, "\x1b[31m");
+        assert_eq!(get_logo("Linux Mint").color, MINT_GREEN);
+        assert_eq!(get_logo("Manjaro Linux").color, MANJARO_GREEN);
+        assert_eq!(get_logo("Pop!_OS").color, POP_TEAL);
+        assert_eq!(get_logo("Alpine Linux").color, ALPINE_BLUE);
+        assert_eq!(get_logo("Void Linux").color, VOID_GREEN);
+        assert_eq!(get_logo("Gentoo").color, GENTOO_PURPLE);
+        assert_eq!(get_logo("EndeavourOS").color, GENTOO_PURPLE);
+        assert_eq!(get_logo("Kali GNU/Linux").color, KALI_BLUE);
+        assert_eq!(get_logo("SteamOS").color, STEAM_BLUE);
+        assert_eq!(get_logo("Artix Linux").color, ARTIX_CYAN);
+        assert_eq!(get_logo("Red Hat Enterprise Linux").color, REDHAT_RED);
+        assert_eq!(get_logo("Rocky Linux").color, SUSE_GREEN);
+        assert_eq!(get_logo("CentOS Stream").color, REDHAT_RED);
+        assert_eq!(get_logo("AlmaLinux").color, DEBIAN_RED);
+        assert_eq!(get_logo("Zorin OS").color, ZORIN_BLUE);
+        assert_eq!(get_logo("Raspbian").color, RASPBIAN_RED);
     }
 }

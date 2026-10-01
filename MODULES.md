@@ -44,6 +44,8 @@ Unlike traditional fetch scripts that spawn dozens of subshells (`bash -c`, `gre
 | `󰓡` | [`swap`](#swap) | Hardware | `/proc/meminfo` | Yes | Enabled |
 | `` | [`disk`](#disk) | Hardware | `libc::statvfs` | Yes | Enabled |
 | `` | [`battery`](#battery) | Hardware | `/sys/class/power_supply/BAT*` | Yes | Enabled |
+| `󰃠` | [`brightness`](#brightness) | Hardware | `/sys/class/backlight/` sysfs | Yes | Optional |
+| `󰓅` | [`cpu_usage`](#cpu_usage) | Hardware | `/proc/stat` jiffies delta | Yes | Optional |
 | `` | [`temp`](#temp) | Hardware | `/sys/class/hwmon/` | No | Optional |
 | `󰍹` | [`display`](#display) | Hardware | Sysfs DRM & EDID Timing Descriptors | No | Optional |
 | `` | [`desktop`](#desktop) | Environment | `$XDG_CURRENT_DESKTOP`, Wayland/X11 sockets | No | Enabled |
@@ -51,7 +53,8 @@ Unlike traditional fetch scripts that spawn dozens of subshells (`bash -c`, `gre
 | `` | [`shell`](#shell) | Environment | `$SHELL` & binary inspection | No | Enabled |
 | `` | [`font`](#font) | Environment | `~/.config/gtk-3.0/settings.ini` | No | Enabled |
 | `` | [`locale`](#locale) | Environment | `$LC_ALL`, `$LC_MESSAGES`, `$LANG` | No | Enabled |
-| `󰖩` | [`wifi`](#wifi) | Network | Active sysfs link (`iw dev <iface> link`) | No | Optional |
+| `󰖩` | [`wifi`](#wifi) | Network | Active sysfs link (`iw dev link` / `nmcli`) | No | Optional |
+| `󰂯` | [`bluetooth`](#bluetooth) | Hardware | `bluetoothctl` & sysfs power_supply | No | Optional |
 | `` | [`local_ip`](#local_ip) | Network | Local network interface query | No | Enabled |
 | `` | [`sound`](#sound) | Multimedia | WirePlumber (`wpctl`) / PulseAudio | Yes | Optional |
 | `󰝚` | [`media`](#media) | Multimedia | MPRIS D-Bus (`playerctl metadata`) | No | Optional |
@@ -243,15 +246,45 @@ logo = ""
 ```
 
 #### `battery`
-Inspects `/sys/class/power_supply/BAT*/capacity` and status. Features intelligent reversed progress bar thresholds (green at high percentage, yellow at medium, red when low).
+Inspects `/sys/class/power_supply/BAT*/capacity`, charging state, battery health (`charge_full` vs `charge_full_design`), and battery cycle count (`cycle_count`). Features intelligent reversed progress bar thresholds (green at high percentage, yellow at medium, red when low).
 ```toml
 [[modules]]
 name = "battery"
 text = "Battery"
 logo = ""
+bar = true
+bar_width = 10
 ```
 ```text
- Battery : 100% [Full] [AC Connected]
+ Battery : SMP - 84% [AC Connected] (Health: 83%, 144 cycles) [■■■■■■■■--]
+```
+
+#### `brightness`
+Zero-subprocess screen brightness detection via `/sys/class/backlight/*/brightness` and `max_brightness`. Automatically calculates display backlight percentage and supports inline progress bar meters.
+```toml
+[[modules]]
+name = "brightness"
+text = "Brightness"
+logo = "󰃠"
+bar = true
+bar_width = 10
+```
+```text
+󰃠 Brightness : 75% [■■■■■■■---]
+```
+
+#### `cpu_usage`
+High-precision active CPU load measurement calculated from `/proc/stat` jiffies delta over a subtle 50ms sample. Renders real-time multi-core utilization percentage with inline progress bar meters.
+```toml
+[[modules]]
+name = "cpu_usage"
+text = "CPU Usage"
+logo = "󰓅"
+bar = true
+bar_width = 10
+```
+```text
+󰓅 CPU Usage : 18% [■■--------]
 ```
 
 #### `display`
@@ -413,14 +446,25 @@ logo = ""
 ### 🌐 Network & Connectivity
 
 #### `wifi`
-Queries the active wireless network SSID and signal quality (`iw dev <iface> link`) without initiating costly network scans.
+Queries active wireless network SSID, signal quality in dBm and percentage, and Wi-Fi frequency band (`2.4 GHz`, `5 GHz`, `6 GHz`) using direct `iw dev <iface> link` queries with graceful `nmcli` fallback without initiating slow network scans.
 ```toml
 [[modules]]
 name = "wifi"
 logo = "󰖩"
 ```
 ```text
-󰖩 Wi-Fi : HomeNetwork (70dBm - 60%)
+󰖩 Wi-Fi : HomeNetwork (-52 dBm, 76%) [5 GHz]
+```
+
+#### `bluetooth`
+Discovers active Bluetooth status and connected peripheral devices (wireless headphones, mice, keyboards, game controllers). Displays device names and battery percentages parsed via `bluetoothctl` and sysfs HID power supply interfaces (`/sys/class/power_supply/hid-*`).
+```toml
+[[modules]]
+name = "bluetooth"
+logo = "󰂯"
+```
+```text
+󰂯 Bluetooth : MX Master 3S (85%), WH-1000XM4 (90%)
 ```
 
 #### `local_ip`
@@ -565,6 +609,10 @@ name = "break"
 [[modules]]
 name = "cpu"
 [[modules]]
+name = "cpu_usage"
+bar = true
+bar_width = 10
+[[modules]]
 name = "gpu"
 [[modules]]
 name = "temp"
@@ -582,9 +630,15 @@ bar_width = 12
 [[modules]]
 name = "battery"
 [[modules]]
+name = "brightness"
+bar = true
+bar_width = 10
+[[modules]]
 name = "break"
 [[modules]]
 name = "wifi"
+[[modules]]
+name = "bluetooth"
 [[modules]]
 name = "local_ip"
 [[modules]]

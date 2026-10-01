@@ -48,6 +48,8 @@ pub struct ThreeDConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub frames: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub exit_on_key: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub outer_color: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub inner_color: Option<String>,
@@ -60,14 +62,15 @@ impl Default for ThreeDConfig {
             speed: 1.0,
             rotate_x: true,
             rotate_y: true,
-            size: 1.25,
+            size: 1.0,
             depth: 1.0,
-            width: None,
-            height: None,
+            width: Some(42),
+            height: Some(24),
             shading_mode: "ascii".to_string(),
             shading: None,
             light: "top-left".to_string(),
             frames: None,
+            exit_on_key: Some(true),
             outer_color: None,
             inner_color: None,
         }
@@ -159,7 +162,7 @@ impl Default for LogoConfig {
             enabled: true,
             distro: "auto".to_string(),
             image_path: None,
-            image_width_cols: 60,
+            image_width_cols: 42,
             image_dir: None,
             random_image: false,
             auto_color: true,
@@ -274,6 +277,9 @@ pub fn default_icon_for_module(name: &str) -> Option<&'static str> {
         "swap" => Some("󰓡"),
         "disk" => Some(""),
         "battery" => Some(""),
+        "brightness" => Some("󰃠"),
+        "cpu_usage" => Some("󰓅"),
+        "bluetooth" => Some("󰂯"),
         "local_ip" => Some(""),
         "locale" => Some(""),
         "temp" => Some(""),

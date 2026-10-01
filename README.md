@@ -28,6 +28,32 @@ Designed as a modern, zero-fork alternative to `neofetch` and `fastfetch`, RustF
 
 ---
 
+## 📸 Showcase & Screenshots
+
+<p align="center">
+  <img src="images/image_3.png" alt="RustFetch Image Mode with Kitty Graphics Protocol and Dynamic Palette" width="850" />
+</p>
+
+<details open>
+<summary><b>🖼️ More Screenshots & Distro Themes (Click to expand/collapse)</b></summary>
+<br>
+
+| Fedora Linux (ASCII + Border) | Arch Linux (ASCII + Border) |
+| :---: | :---: |
+| <img src="images/Fedora.png" width="440" /> | <img src="images/arch.png" width="440" /> |
+
+| Gentoo Linux (ASCII + Border) | Kitty Image Mode + Adaptive Palette |
+| :---: | :---: |
+| <img src="images/gentoo.png" width="440" /> | <img src="images/image_1.png" width="440" /> |
+
+| Custom Image Mode (Minimal Card) |
+| :---: |
+| <img src="images/image_2.png" width="440" /> |
+
+</details>
+
+---
+
 ## Key Features
 
 * **Universal Distro Support:** Native ASCII logos and pure-filesystem package counters for Fedora, Arch, Ubuntu, Debian, Alpine, Void, NixOS, Gentoo, openSUSE, Mint, Manjaro, Pop!_OS, EndeavourOS, Kali, SteamOS, Artix, Red Hat / CentOS / Rocky / Alma.

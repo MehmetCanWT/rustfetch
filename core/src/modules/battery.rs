@@ -111,7 +111,10 @@ mod tests {
 
         let info = detect_from_dir(&temp, "BAT0").unwrap();
         assert_eq!(info.label, "Battery (BAT0)");
-        assert_eq!(info.value, "SMP - 95% [AC Connected] (Health: 80%, 120 cycles)");
+        assert_eq!(
+            info.value,
+            "SMP - 95% [AC Connected] (Health: 80%, 120 cycles)"
+        );
 
         let _ = fs::remove_dir_all(&temp);
     }

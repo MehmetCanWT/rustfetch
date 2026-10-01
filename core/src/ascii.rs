@@ -128,11 +128,7 @@ pub fn load_ascii_frames(path: &Path) -> io::Result<Vec<Vec<String>>> {
         }
 
         // Sort entries naturally (e.g. frame_1.txt before frame_10.txt)
-        entries.sort_by(|a, b| {
-            let name_a = a.file_name().to_string_lossy().to_string();
-            let name_b = b.file_name().to_string_lossy().to_string();
-            natural_sort_key(&name_a).cmp(&natural_sort_key(&name_b))
-        });
+        entries.sort_by_key(|e| natural_sort_key(&e.file_name().to_string_lossy()));
 
         let mut frames = Vec::with_capacity(entries.len());
         for entry in entries {
@@ -145,7 +141,10 @@ pub fn load_ascii_frames(path: &Path) -> io::Result<Vec<Vec<String>>> {
         if frames.is_empty() {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
-                format!("All frame files in directory were empty: {}", path.display()),
+                format!(
+                    "All frame files in directory were empty: {}",
+                    path.display()
+                ),
             ));
         }
 
@@ -176,7 +175,7 @@ mod tests {
             "frame_20.txt",
             "frame_03.txt",
         ];
-        list.sort_by(|a, b| natural_sort_key(a).cmp(&natural_sort_key(b)));
+        list.sort_by_key(|a| natural_sort_key(a));
         assert_eq!(
             list,
             vec![

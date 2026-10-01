@@ -327,10 +327,7 @@ fn run_once(
                         .map(|l| layout::strip_ansi_width(l))
                         .max()
                         .unwrap_or(0);
-                    (
-                        Some(LogoBlock { lines, width: w }),
-                        None,
-                    )
+                    (Some(LogoBlock { lines, width: w }), None)
                 }
                 _ => {
                     let distro_name = if config.general.logo.distro == "auto" {
@@ -371,9 +368,7 @@ fn run_once(
         dynamic_color = Some(c.clone());
     }
 
-    let header_color = dynamic_color
-        .as_deref()
-        .or(distro_color);
+    let header_color = dynamic_color.as_deref().or(distro_color);
 
     let info_lines = gather_info_lines(config, modules, configs, dynamic_color.as_deref());
 
@@ -653,9 +648,7 @@ fn gather_info_lines(
                 }
             }
 
-            let color_str = dynamic_color
-                .or(mc.color.as_deref())
-                .unwrap_or("blue");
+            let color_str = dynamic_color.or(mc.color.as_deref()).unwrap_or("blue");
             let color = color_code(color_str);
             Some(InfoLine {
                 label,
@@ -759,8 +752,7 @@ fn run_3d(
                     depth_scale,
                     shading_mode,
                 );
-                let (d_outer, d_inner) =
-                    rustfetch_render::three_d::distro_3d_colors(&distro_name);
+                let (d_outer, d_inner) = rustfetch_render::three_d::distro_3d_colors(&distro_name);
                 (m, d_outer, d_inner)
             }
         } else {
@@ -771,8 +763,7 @@ fn run_3d(
                 depth_scale,
                 shading_mode,
             );
-            let (d_outer, d_inner) =
-                rustfetch_render::three_d::distro_3d_colors(&distro_name);
+            let (d_outer, d_inner) = rustfetch_render::three_d::distro_3d_colors(&distro_name);
             (m, d_outer, d_inner)
         }
     } else {
@@ -783,8 +774,7 @@ fn run_3d(
             depth_scale,
             shading_mode,
         );
-        let (d_outer, d_inner) =
-            rustfetch_render::three_d::distro_3d_colors(&distro_name);
+        let (d_outer, d_inner) = rustfetch_render::three_d::distro_3d_colors(&distro_name);
         (m, d_outer, d_inner)
     };
 
@@ -877,8 +867,14 @@ fn run_3d(
             raw.c_cc[libc::VTIME] = 0;
             libc::tcsetattr(libc::STDIN_FILENO, libc::TCSAFLUSH, &raw);
         }
-        libc::signal(libc::SIGINT, handle_sigint as *const () as libc::sighandler_t);
-        libc::signal(libc::SIGTERM, handle_sigint as *const () as libc::sighandler_t);
+        libc::signal(
+            libc::SIGINT,
+            handle_sigint as *const () as libc::sighandler_t,
+        );
+        libc::signal(
+            libc::SIGTERM,
+            handle_sigint as *const () as libc::sighandler_t,
+        );
     }
     #[cfg(not(unix))]
     let _ = crossterm::terminal::enable_raw_mode();
@@ -908,7 +904,8 @@ fn run_3d(
         cli.frames.or(config.general.logo.three_d.frames)
     };
 
-    let exit_on_key = !cli.hold && (cli.exit_on_key || config.general.logo.three_d.exit_on_key.unwrap_or(true));
+    let exit_on_key =
+        !cli.hold && (cli.exit_on_key || config.general.logo.three_d.exit_on_key.unwrap_or(true));
 
     loop {
         if let Some(limit) = max_frames {
@@ -929,8 +926,18 @@ fn run_3d(
 
         let (term_cols, term_rows) = match (env_cols, env_rows) {
             (Some(c), Some(r)) => (c, r),
-            (Some(c), None) => (c, crossterm::terminal::size().map(|(_, r)| r as usize).unwrap_or(24)),
-            (None, Some(r)) => (crossterm::terminal::size().map(|(c, _)| c as usize).unwrap_or(80), r),
+            (Some(c), None) => (
+                c,
+                crossterm::terminal::size()
+                    .map(|(_, r)| r as usize)
+                    .unwrap_or(24),
+            ),
+            (None, Some(r)) => (
+                crossterm::terminal::size()
+                    .map(|(c, _)| c as usize)
+                    .unwrap_or(80),
+                r,
+            ),
             (None, None) => crossterm::terminal::size()
                 .map(|(c, r)| (c as usize, r as usize))
                 .unwrap_or((80, 24)),
@@ -1059,9 +1066,8 @@ fn run_3d(
 
                     let mut ibuf = [0u8; 128];
                     let to_read = (avail as usize).min(ibuf.len());
-                    let n = unsafe {
-                        libc::read(fd, ibuf.as_mut_ptr() as *mut libc::c_void, to_read)
-                    };
+                    let n =
+                        unsafe { libc::read(fd, ibuf.as_mut_ptr() as *mut libc::c_void, to_read) };
                     if n > 0 {
                         let bytes = &ibuf[..n as usize];
                         if bytes.iter().any(|&b| b == b'q' || b == b'Q' || b == 3) {
@@ -1081,7 +1087,9 @@ fn run_3d(
                     }
                     if let Ok(crossterm::event::Event::Key(key)) = crossterm::event::read() {
                         if (key.code == crossterm::event::KeyCode::Char('c')
-                            && key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL))
+                            && key
+                                .modifiers
+                                .contains(crossterm::event::KeyModifiers::CONTROL))
                             || key.code == crossterm::event::KeyCode::Char('q')
                             || key.code == crossterm::event::KeyCode::Char('Q')
                         {
@@ -1205,8 +1213,14 @@ fn run_ascii_animation(
             raw.c_cc[libc::VTIME] = 0;
             libc::tcsetattr(libc::STDIN_FILENO, libc::TCSAFLUSH, &raw);
         }
-        libc::signal(libc::SIGINT, handle_sigint as *const () as libc::sighandler_t);
-        libc::signal(libc::SIGTERM, handle_sigint as *const () as libc::sighandler_t);
+        libc::signal(
+            libc::SIGINT,
+            handle_sigint as *const () as libc::sighandler_t,
+        );
+        libc::signal(
+            libc::SIGTERM,
+            handle_sigint as *const () as libc::sighandler_t,
+        );
     }
     #[cfg(not(unix))]
     let _ = crossterm::terminal::enable_raw_mode();
@@ -1234,8 +1248,8 @@ fn run_ascii_animation(
         cli.frames.or(config.general.logo.animation.frames)
     };
 
-    let exit_on_key = !cli.hold
-        && (cli.exit_on_key || config.general.logo.animation.exit_on_key.unwrap_or(true));
+    let exit_on_key =
+        !cli.hold && (cli.exit_on_key || config.general.logo.animation.exit_on_key.unwrap_or(true));
 
     loop {
         if let Some(limit) = max_frames {
@@ -1255,8 +1269,18 @@ fn run_ascii_animation(
 
         let (term_cols, term_rows) = match (env_cols, env_rows) {
             (Some(c), Some(r)) => (c, r),
-            (Some(c), None) => (c, crossterm::terminal::size().map(|(_, r)| r as usize).unwrap_or(24)),
-            (None, Some(r)) => (crossterm::terminal::size().map(|(c, _)| c as usize).unwrap_or(80), r),
+            (Some(c), None) => (
+                c,
+                crossterm::terminal::size()
+                    .map(|(_, r)| r as usize)
+                    .unwrap_or(24),
+            ),
+            (None, Some(r)) => (
+                crossterm::terminal::size()
+                    .map(|(c, _)| c as usize)
+                    .unwrap_or(80),
+                r,
+            ),
             (None, None) => crossterm::terminal::size()
                 .map(|(c, r)| (c as usize, r as usize))
                 .unwrap_or((80, 24)),
@@ -1359,9 +1383,8 @@ fn run_ascii_animation(
                     }
                     let mut ibuf = [0u8; 128];
                     let to_read = (avail as usize).min(ibuf.len());
-                    let n = unsafe {
-                        libc::read(fd, ibuf.as_mut_ptr() as *mut libc::c_void, to_read)
-                    };
+                    let n =
+                        unsafe { libc::read(fd, ibuf.as_mut_ptr() as *mut libc::c_void, to_read) };
                     if n > 0 {
                         let bytes = &ibuf[..n as usize];
                         if bytes.iter().any(|&b| b == b'q' || b == b'Q' || b == 3) {
@@ -1382,7 +1405,9 @@ fn run_ascii_animation(
                     }
                     if let Ok(crossterm::event::Event::Key(key)) = crossterm::event::read() {
                         if (key.code == crossterm::event::KeyCode::Char('c')
-                            && key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL))
+                            && key
+                                .modifiers
+                                .contains(crossterm::event::KeyModifiers::CONTROL))
                             || key.code == crossterm::event::KeyCode::Char('q')
                             || key.code == crossterm::event::KeyCode::Char('Q')
                         {

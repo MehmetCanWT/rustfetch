@@ -28,10 +28,7 @@ impl Module for Wifi {
             format!(" ({})", parts.join(", "))
         };
 
-        let band_str = details
-            .band
-            .map(|b| format!(" [{b}]"))
-            .unwrap_or_default();
+        let band_str = details.band.map(|b| format!(" [{b}]")).unwrap_or_default();
 
         let val = format!("{}{sig_str}{band_str}", details.ssid);
         Some(Info::new("Wi-Fi", val))
@@ -186,7 +183,6 @@ pub fn parse_nmcli_dev_wifi(text: &str) -> Option<WifiDetails> {
                 }
                 let signal_pct = parts[2].trim().parse::<u8>().ok();
                 let freq_num = parts[3]
-                    .trim()
                     .split_whitespace()
                     .next()
                     .and_then(|s| s.parse::<f64>().ok());

@@ -37,7 +37,11 @@ pub struct ThreeDConfig {
     pub rotate_y: bool,
     pub size: f32,
     pub depth: f32,
-    #[serde(skip_serializing_if = "Option::is_none", alias = "image_width_cols", alias = "cols")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        alias = "image_width_cols",
+        alias = "cols"
+    )]
     pub width: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none", alias = "rows")]
     pub height: Option<usize>,

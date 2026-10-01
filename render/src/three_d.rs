@@ -588,7 +588,8 @@ impl Renderer3D {
         // Buffers: z-buffer (ooz), luminance, color index / ANSI string
         let mut zbuf = vec![vec![0.0f32; total_sub_cols]; total_sub_rows];
         let mut lumbuf = vec![vec![0.0f32; total_sub_cols]; total_sub_rows];
-        let mut colorbuf: Vec<Vec<Option<String>>> = vec![vec![None; total_sub_cols]; total_sub_rows];
+        let mut colorbuf: Vec<Vec<Option<String>>> =
+            vec![vec![None; total_sub_cols]; total_sub_rows];
         let mut is_outer_buf = vec![vec![false; total_sub_cols]; total_sub_rows];
 
         let cos_a = angle_x.cos();

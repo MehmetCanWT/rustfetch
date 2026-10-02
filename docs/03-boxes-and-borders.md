@@ -29,7 +29,30 @@ rustfetch --border-image ~/Pictures/frame.png --icon-only
 [general]
 border_image = "~/.config/rustfetch/frames/vintage_corner.png"
 border_image_width = 24    # Width in terminal columns (default: 24)
+border_image_position = "frame" # "left", "right", "top", "bottom", or "frame"
 icon_only = true           # Clean icon-only format next to the frame
+```
+
+### Border Image Placement
+
+`border_image_position` controls where the rasterized image is composed relative
+to the complete telemetry card. It works with both plain telemetry and a normal
+Unicode `border = true` card, so image decoration and text-box borders can be
+layered together.
+
+| Position | Result |
+|---|---|
+| `left` | Backwards-compatible image column before the module card. |
+| `right` | Image column after the module card. |
+| `top` | Image rows above the complete module card. |
+| `bottom` | Image rows below the complete module card. |
+| `frame` | Reuses the same image on both sides of the module card. |
+
+```bash
+# Put a normal rounded module card between two image decorations.
+rustfetch --no-logo --border --border-title "System" \
+  --border-image ~/.config/rustfetch/frames/side.png \
+  --border-image-position frame
 ```
 
 ### How the Image Border Engine Works:
@@ -38,8 +61,8 @@ icon_only = true           # Clean icon-only format next to the frame
 2. **Alpha Transparency Preservation:**
    Transparent pixels (`alpha < 30`) remain completely transparent (rendered as clean whitespace), allowing the border graphic to blend seamlessly into your terminal's background.
 3. **Multi-Column Horizontal Composition:**
-   - **Dual Graphics:** If an image logo or distro ASCII logo is enabled, the logo appears on the left, the border image sits in the middle framing the text, and the telemetry lines align on the right.
-   - **Standalone Frame:** If no logo is enabled (`--no-logo`), the border image directly frames the telemetry block.
+   - **Logo + Module Frame:** An image logo remains the primary logo, while the border image decorates the complete module card according to `border_image_position`.
+   - **Standalone Frame:** If no logo is enabled (`--no-logo`), image placement still applies directly to the telemetry block.
 
 ---
 

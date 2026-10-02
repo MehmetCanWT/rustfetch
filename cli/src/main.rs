@@ -138,6 +138,9 @@ struct Cli {
     #[arg(long, value_name = "COLS")]
     border_image_width: Option<usize>,
 
+    #[arg(long, value_name = "POSITION")]
+    border_image_position: Option<String>,
+
     #[arg(long, value_enum, value_name = "SHELL")]
     completions: Option<Shell>,
 }
@@ -265,6 +268,9 @@ fn main() {
     }
     if let Some(bw) = cli.border_image_width {
         config.general.border_image_width = Some(bw);
+    }
+    if let Some(position) = &cli.border_image_position {
+        config.general.border_image_position = position.clone();
     }
     if let Some(theme_name) = &config.general.theme {
         if let Some(t) = rustfetch_render::get_theme(theme_name) {
@@ -507,6 +513,7 @@ fn run_once(
         icon_only: config.general.icon_only,
         key_type: config.general.key_type.as_deref(),
         border_image: border_image_lines.as_deref(),
+        border_image_position: &config.general.border_image_position,
     };
 
     if show_logo {
@@ -995,6 +1002,7 @@ fn run_3d(
         icon_only: config.general.icon_only,
         key_type: config.general.key_type.as_deref(),
         border_image: None,
+        border_image_position: &config.general.border_image_position,
     };
 
     let mut info_lines = gather_info_lines(config, modules, configs, None);
@@ -1351,6 +1359,7 @@ fn run_ascii_animation(
         icon_only: config.general.icon_only,
         key_type: config.general.key_type.as_deref(),
         border_image: None,
+        border_image_position: &config.general.border_image_position,
     };
 
     let mut info_lines = gather_info_lines(config, modules, configs, None);
@@ -1631,16 +1640,15 @@ fn run_live(
             if ready {
                 if let Ok(event) = read() {
                     match event {
-                        Event::Key(key) => {
+                        Event::Key(key)
                             if key.code == KeyCode::Char('q')
                                 || key.code == KeyCode::Esc
                                 || (key.code == KeyCode::Char('c')
                                     && key
                                         .modifiers
-                                        .contains(crossterm::event::KeyModifiers::CONTROL))
-                            {
-                                break;
-                            }
+                                        .contains(crossterm::event::KeyModifiers::CONTROL)) =>
+                        {
+                            break;
                         }
                         Event::Resize(_, _) => {}
                         _ => {}

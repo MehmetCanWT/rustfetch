@@ -1,6 +1,7 @@
 use fast_image_resize as fr;
 use fast_image_resize::Image;
 use image::{AnimationDecoder, ImageReader};
+use std::fmt::Write as _;
 use std::fs::File;
 use std::io::BufReader;
 use std::num::NonZeroU32;
@@ -159,7 +160,9 @@ pub fn render_halfblock(path: &str, target_cols: usize) -> Option<Vec<String>> {
     let mut lines = Vec::with_capacity(height / 2);
 
     for y in (0..height).step_by(2) {
-        let mut line = String::with_capacity(width * 25);
+        // A TrueColor half-block can contain two SGR sequences, the glyph, and
+        // a reset. Reserving once avoids one allocation per source pixel.
+        let mut line = String::with_capacity(width * 40);
         for x in 0..width {
             let idx_top = (y * width + x) * 4;
             let idx_bot = ((y + 1) * width + x) * 4;
@@ -180,13 +183,11 @@ pub fn render_halfblock(path: &str, target_cols: usize) -> Option<Vec<String>> {
             if a1 < 30 && a2 < 30 {
                 line.push(' ');
             } else if a1 < 30 {
-                line.push_str(&format!("\x1b[38;2;{r2};{g2};{b2}m▄\x1b[0m"));
+                let _ = write!(line, "\x1b[38;2;{r2};{g2};{b2}m▄\x1b[0m");
             } else if a2 < 30 {
-                line.push_str(&format!("\x1b[38;2;{r1};{g1};{b1}m▀\x1b[0m"));
+                let _ = write!(line, "\x1b[38;2;{r1};{g1};{b1}m▀\x1b[0m");
             } else {
-                line.push_str(&format!(
-                    "\x1b[38;2;{r1};{g1};{b1}m\x1b[48;2;{r2};{g2};{b2}m▀"
-                ));
+                let _ = write!(line, "\x1b[38;2;{r1};{g1};{b1}m\x1b[48;2;{r2};{g2};{b2}m▀");
             }
         }
         line.push_str("\x1b[0m");
@@ -194,4 +195,18 @@ pub fn render_halfblock(path: &str, target_cols: usize) -> Option<Vec<String>> {
     }
 
     Some(lines)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn render_halfblock_rasterizes_a_repository_image() {
+        let image = format!("{}/../images/arch.png", env!("CARGO_MANIFEST_DIR"));
+        let lines = render_halfblock(&image, 4).expect("repository image must render");
+
+        assert!(!lines.is_empty());
+        assert!(lines.iter().any(|line| line.contains("\x1b[")));
+    }
 }

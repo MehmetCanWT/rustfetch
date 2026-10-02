@@ -78,7 +78,7 @@ Explore dedicated, in-depth guides for every single customization feature in Rus
 * **Modern Nerd Font v3 Glyphs:** Crisp, non-broken Material Design symbols for every module, plus distro-aware OS icons (Arch `󰣇`, Fedora `󰣛`, Ubuntu `󰕈`, Debian `󰣚`, NixOS `󱄅`, Gentoo `󰣨`).
 * **Ultra-Deep Ricing & Theming:** 13+ built-in color themes (Catppuccin Mocha/Latte/Macchiato/Frappé, Dracula, Tokyo Night, Gruvbox, Nord, Rosé Pine, Cyberpunk, Monokai, OneDark, Solarized), 24-bit TrueColor linear text gradients, and Neofetch `$1..$6` color replacements.
 * **Advanced Box & Border Engine:** 8 built-in border styles (`ascii`, `light`, `heavy`, `double`, `rounded`, `brackets`, `dots`, `block`), custom 11-char strings (`border_chars`), colored borders, embedded titles (`╭── System ────╮`), and section divider lines (`├── Hardware ──┤`).
-* **Image Borders & Decorative Frames (`border_image`):** Frame telemetry with any PNG/JPG/WebP illustration rendered via TrueColor ANSI half-blocks or Kitty graphics protocol.
+* **Image Borders & Decorative Frames (`border_image`):** Compose telemetry cards with any PNG/JPG/WebP illustration on the left, right, top, bottom, or both sides as a frame, rendered via TrueColor ANSI half-blocks.
 * **Universal Terminal Compatibility:** Seamlessly adapts across GUI emulators (Kitty, Alacritty, Ghostty, Foot, WezTerm), Linux Virtual Consoles (`TERM=linux` automatically downsamples 24-bit TrueColor to 16 ANSI colors), dumb terminals, and standard `NO_COLOR` environments.
 * **Microsecond Execution (~4ms):** Reads hardware topology directly from `/sys/bus/pci/devices`, `/sys/class/drm`, and `/proc`, bypassing `lspci`, `xrandr`, and shell sub-processes.
 * **Built-in Presets (`--preset`):** Instant layouts including `card`, `dots`, `clean`, `neofetch`, `brackets`, `retro`, `minimal`, `modern`, and `compact`.
@@ -169,6 +169,25 @@ cargo build --release -p rustfetch
 sudo cp target/release/rustfetch /usr/local/bin/
 sudo ln -sf /usr/local/bin/rustfetch /usr/local/bin/rfetch
 ```
+
+---
+
+## Development & Verification
+
+Run the complete local quality gate (formatting, unit tests, Clippy with warnings
+as errors, release build, and isolated CLI smoke tests) with:
+
+```bash
+make test
+# or, without Make:
+./scripts/test.sh
+```
+
+The test runner uses temporary XDG configuration and cache directories, so it
+never creates or changes your regular RustFetch configuration.
+
+Useful focused checks are available through `make test-unit`, `make test-cli`,
+`make fmt`, `make lint`, and `make release`.
 
 ---
 
@@ -263,6 +282,7 @@ Options:
       --border-title <TITLE>   Optional title embedded in top border line (e.g. "System")
       --border-image <PATH>    Path to image file used as a decorative border/frame
       --border-image-width <N> Column width for border image [default: 24]
+      --border-image-position <POSITION>  Place the image at left, right, top, bottom, or frame
       --icon-only              Show only icons and telemetry values (hide labels)
       --separator <SEP>        Custom separator string between label/icon and value (e.g. " • ")
       --3d                     Run in animated 3D ASCII art mode (continuous autonomous rotation)

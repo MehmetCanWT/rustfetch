@@ -72,6 +72,7 @@ box_padding = 1            # Inner horizontal spacing between border and content
 # Image Border / Decorative Frame
 # border_image = "~/.config/rustfetch/frames/ornament.png"
 # border_image_width = 24
+# border_image_position = "frame" # left, right, top, bottom, or frame
 
 # Theme and Gradients
 theme = "catppuccin-mocha" # Built-in color theme
@@ -131,6 +132,7 @@ CLI flags always take precedence over configuration file settings:
       --border-title <TITLE>   Title embedded in top border line
       --border-image <PATH>    Path to image file used as a decorative border/frame
       --border-image-width <N> Column width for border image
+      --border-image-position <POSITION>  left, right, top, bottom, or frame
       --icon-only              Hide labels and display only glyphs + values
       --separator <SEP>        Custom delimiter between label/icon and value
   -l, --logo <NAME>            Override distro logo

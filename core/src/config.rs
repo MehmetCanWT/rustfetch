@@ -273,6 +273,7 @@ pub struct GeneralConfig {
     pub border_image: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub border_image_width: Option<usize>,
+    pub border_image_position: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub gradient: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -397,6 +398,7 @@ impl Default for GeneralConfig {
             box_padding: 1,
             border_image: None,
             border_image_width: None,
+            border_image_position: "left".to_string(),
             gradient: None,
             theme: None,
             colors: ColorsConfig::default(),

@@ -3,7 +3,10 @@ pub mod cache;
 pub mod config;
 pub mod modules;
 
-pub use config::{default_icon_for_module, make_progress_bar, Config};
+pub use ascii::apply_neofetch_colors;
+pub use config::{
+    default_icon_for_module, distro_icon, make_progress_bar, BorderCharsConfig, Config,
+};
 
 #[derive(Debug, Clone)]
 pub struct Info {

@@ -162,6 +162,20 @@ pub fn load_ascii_frames(path: &Path) -> io::Result<Vec<Vec<String>>> {
     }
 }
 
+/// Replaces Neofetch style color placeholders ($1..$6, ${c1}..${c6}) with ANSI escape codes.
+pub fn apply_neofetch_colors(content: &str, colors: &[&str]) -> String {
+    let mut result = content.to_string();
+    for (i, &col_code) in colors.iter().enumerate() {
+        let n = i + 1;
+        let var_short = format!("${n}");
+        let var_long = format!("${{c{n}}}");
+        result = result
+            .replace(&var_long, col_code)
+            .replace(&var_short, col_code);
+    }
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -232,5 +246,16 @@ mod tests {
         assert_eq!(frames[2], vec!["Frame 10"]);
 
         let _ = fs::remove_dir_all(&temp);
+    }
+
+    #[test]
+    fn test_apply_neofetch_colors() {
+        let input = "${c1}Red text $2Blue text$1 Normal text";
+        let colors = vec!["\x1b[31m", "\x1b[34m"];
+        let result = apply_neofetch_colors(input, &colors);
+        assert_eq!(
+            result,
+            "\x1b[31mRed text \x1b[34mBlue text\x1b[31m Normal text"
+        );
     }
 }

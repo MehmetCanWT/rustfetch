@@ -66,8 +66,14 @@ pub fn render(path: &str, target_cols: usize) -> Option<usize> {
                 })
                 .collect();
 
-            kitty::print_kitty_animation(&kitty_frames, target_px_width, target_px_height);
             let lines = (target_px_height as f32 / cell_h as f32).ceil() as usize;
+            kitty::print_kitty_animation(
+                &kitty_frames,
+                target_px_width,
+                target_px_height,
+                target_cols as u32,
+                lines as u32,
+            );
             return Some(lines);
         }
     }
@@ -103,9 +109,15 @@ pub fn render(path: &str, target_cols: usize) -> Option<usize> {
         .resize(&src_image.view(), &mut dst_image.view_mut())
         .ok()?;
 
-    kitty::print_kitty(dst_image.buffer(), target_px_width, target_px_height);
-
     let lines = (target_px_height as f32 / cell_h as f32).ceil() as usize;
+    kitty::print_kitty(
+        dst_image.buffer(),
+        target_px_width,
+        target_px_height,
+        target_cols as u32,
+        lines as u32,
+    );
+
     Some(lines)
 }
 

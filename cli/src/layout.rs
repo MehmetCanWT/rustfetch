@@ -127,6 +127,20 @@ pub fn terminal_width() -> usize {
         .unwrap_or(80)
 }
 
+#[allow(dead_code)]
+pub fn terminal_height() -> usize {
+    unsafe {
+        let mut ws: libc::winsize = std::mem::zeroed();
+        if libc::ioctl(libc::STDOUT_FILENO, libc::TIOCGWINSZ, &mut ws) == 0 && ws.ws_row > 0 {
+            return ws.ws_row as usize;
+        }
+    }
+    std::env::var("LINES")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(24)
+}
+
 pub const LOGO_GAP: usize = 3;
 const MIN_LOGO_WIDTH: usize = 50;
 
@@ -212,11 +226,156 @@ pub struct RenderOptions<'a> {
     pub padding: usize,
     pub center: bool,
     pub border: bool,
+    pub border_style: Option<&'a str>,
+    pub border_color: Option<&'a str>,
+    pub border_chars: Option<&'a rustfetch_core::BorderCharsConfig>,
+    pub border_title: Option<&'a str>,
+    pub box_padding: usize,
     pub palette_lines: Option<&'a [String]>,
+    pub palette_position: &'a str,
+    pub icon_only: bool,
+    pub key_type: Option<&'a str>,
+    pub border_image: Option<&'a [String]>,
+}
+
+#[allow(dead_code)]
+pub fn wrap_in_box(lines: &[String]) -> Vec<String> {
+    wrap_in_box_advanced(lines, None, None, None, None, 1)
+}
+
+pub fn wrap_in_box_advanced(
+    lines: &[String],
+    style: Option<&str>,
+    color: Option<&str>,
+    custom_chars: Option<&rustfetch_core::BorderCharsConfig>,
+    title: Option<&str>,
+    box_padding: usize,
+) -> Vec<String> {
+    if lines.is_empty() {
+        return Vec::new();
+    }
+
+    let default_chars = rustfetch_core::BorderCharsConfig::from_style(style.unwrap_or("rounded"));
+    let chars = custom_chars.unwrap_or(&default_chars);
+
+    let border_color_code = color.map(color_code).unwrap_or_default();
+    let reset_border = if color.is_some() { RESET } else { "" };
+
+    let content_lines: Vec<&String> = lines
+        .iter()
+        .filter(|l| !l.starts_with("---DIVIDER"))
+        .collect();
+
+    let max_w = content_lines
+        .iter()
+        .map(|l| strip_ansi_width(l))
+        .max()
+        .unwrap_or(0);
+
+    let pad_len = box_padding.max(1);
+    let pad_str = " ".repeat(pad_len);
+    let inner_w = max_w + (pad_len * 2);
+
+    let mut boxed = Vec::with_capacity(lines.len() + 2);
+
+    // Top border line
+    if let Some(t) = title.filter(|t| !t.is_empty()) {
+        let title_clean = strip_ansi(t);
+        let title_w = UnicodeWidthStr::width(title_clean.as_str());
+        let top_rep = chars.top.as_str();
+        if inner_w > title_w + 4 {
+            let remain = inner_w - (title_w + 4);
+            boxed.push(format!(
+                "{border_color_code}{tl}{top}{top} {BOLD}{t}{RESET}{border_color_code} {rem}{tr}{reset_border}",
+                tl = chars.top_left,
+                top = top_rep,
+                rem = top_rep.repeat(remain),
+                tr = chars.top_right
+            ));
+        } else {
+            boxed.push(format!(
+                "{border_color_code}{tl}{rep}{tr}{reset_border}",
+                tl = chars.top_left,
+                rep = chars.top.repeat(inner_w),
+                tr = chars.top_right
+            ));
+        }
+    } else {
+        boxed.push(format!(
+            "{border_color_code}{tl}{rep}{tr}{reset_border}",
+            tl = chars.top_left,
+            rep = chars.top.repeat(inner_w),
+            tr = chars.top_right
+        ));
+    }
+
+    // Inner lines
+    for line in lines {
+        if line.starts_with("---DIVIDER:") {
+            let section_title = line
+                .strip_prefix("---DIVIDER:")
+                .unwrap_or("")
+                .trim_end_matches("---");
+            let st_clean = strip_ansi(section_title);
+            let st_w = UnicodeWidthStr::width(st_clean.as_str());
+            let div_rep = chars.divider.as_str();
+            if inner_w > st_w + 4 {
+                let remain = inner_w - (st_w + 4);
+                let left_side = remain / 2;
+                let right_side = remain - left_side;
+                boxed.push(format!(
+                    "{border_color_code}{dl}{left_r} {BOLD}{section_title}{RESET}{border_color_code} {right_r}{dr}{reset_border}",
+                    dl = chars.divider_left,
+                    left_r = div_rep.repeat(left_side),
+                    right_r = div_rep.repeat(right_side),
+                    dr = chars.divider_right
+                ));
+            } else {
+                boxed.push(format!(
+                    "{border_color_code}{dl}{rep}{dr}{reset_border}",
+                    dl = chars.divider_left,
+                    rep = chars.divider.repeat(inner_w),
+                    dr = chars.divider_right
+                ));
+            }
+        } else if line == "---DIVIDER---" {
+            boxed.push(format!(
+                "{border_color_code}{dl}{rep}{dr}{reset_border}",
+                dl = chars.divider_left,
+                rep = chars.divider.repeat(inner_w),
+                dr = chars.divider_right
+            ));
+        } else {
+            let visual_w = strip_ansi_width(line);
+            let line_pad = " ".repeat(max_w.saturating_sub(visual_w));
+            boxed.push(format!(
+                "{border_color_code}{l}{reset_border}{pad_str}{line}{line_pad}{pad_str}{border_color_code}{r}{reset_border}",
+                l = chars.left,
+                r = chars.right
+            ));
+        }
+    }
+
+    // Bottom border line
+    boxed.push(format!(
+        "{border_color_code}{bl}{rep}{br}{reset_border}",
+        bl = chars.bottom_left,
+        rep = chars.bottom.repeat(inner_w),
+        br = chars.bottom_right
+    ));
+
+    boxed
 }
 
 pub fn build_right_lines(info_lines: &[InfoLine], opts: &RenderOptions) -> Vec<String> {
     let mut right_lines: Vec<String> = Vec::new();
+
+    if opts.palette_position == "top" || opts.palette_position == "both" {
+        if let Some(pal) = opts.palette_lines {
+            right_lines.extend(pal.iter().cloned());
+            right_lines.push(String::new());
+        }
+    }
 
     if let Some(h) = opts.header {
         let col = opts.header_color.unwrap_or("cyan");
@@ -227,36 +386,50 @@ pub fn build_right_lines(info_lines: &[InfoLine], opts: &RenderOptions) -> Vec<S
         ));
     }
 
-    right_lines.extend(format_info_lines(info_lines, opts.separator));
+    right_lines.extend(format_info_lines(
+        info_lines,
+        opts.separator,
+        opts.icon_only,
+        opts.key_type,
+    ));
 
-    if let Some(pal) = opts.palette_lines {
-        right_lines.push(String::new());
-        right_lines.extend(pal.iter().cloned());
+    if opts.palette_position == "bottom" || opts.palette_position == "both" {
+        if let Some(pal) = opts.palette_lines {
+            right_lines.push(String::new());
+            right_lines.extend(pal.iter().cloned());
+        }
     }
 
     if opts.border {
-        right_lines = wrap_in_box(&right_lines);
+        right_lines = wrap_in_box_advanced(
+            &right_lines,
+            opts.border_style,
+            opts.border_color,
+            opts.border_chars,
+            opts.border_title,
+            opts.box_padding,
+        );
+    }
+
+    if let Some(border_img) = opts.border_image.filter(|b| !b.is_empty()) {
+        let border_w = border_img
+            .iter()
+            .map(|l| strip_ansi_width(l))
+            .max()
+            .unwrap_or(0);
+        let total_rows = border_img.len().max(right_lines.len());
+        let mut combined = Vec::with_capacity(total_rows);
+        for i in 0..total_rows {
+            let b_str = border_img.get(i).map(|s| s.as_str()).unwrap_or("");
+            let b_visual_w = strip_ansi_width(b_str);
+            let b_pad = " ".repeat(border_w.saturating_sub(b_visual_w));
+            let r_str = right_lines.get(i).map(|s| s.as_str()).unwrap_or("");
+            combined.push(format!("{b_str}{b_pad}   {r_str}"));
+        }
+        return combined;
     }
 
     right_lines
-}
-
-pub fn wrap_in_box(lines: &[String]) -> Vec<String> {
-    if lines.is_empty() {
-        return Vec::new();
-    }
-    let max_w = lines.iter().map(|l| strip_ansi_width(l)).max().unwrap_or(0);
-    let inner_w = max_w + 2;
-    let mut boxed = Vec::with_capacity(lines.len() + 2);
-
-    boxed.push(format!("╭{}╮", "─".repeat(inner_w)));
-    for line in lines {
-        let visual_w = strip_ansi_width(line);
-        let padding = " ".repeat(max_w.saturating_sub(visual_w));
-        boxed.push(format!("│ {line}{padding} │"));
-    }
-    boxed.push(format!("╰{}╯", "─".repeat(inner_w)));
-    boxed
 }
 
 pub fn render(logo: Option<&LogoBlock>, info_lines: &[InfoLine], opts: &RenderOptions) {
@@ -272,24 +445,48 @@ pub fn render(logo: Option<&LogoBlock>, info_lines: &[InfoLine], opts: &RenderOp
     }
 }
 
-pub fn format_info_lines(info_lines: &[InfoLine], separator: &str) -> Vec<String> {
-    let label_width = info_lines
-        .iter()
-        .filter(|l| !l.label.is_empty() && !l.value.is_empty())
-        .map(|l| {
-            let icon_w = l
-                .icon
-                .as_deref()
-                .map(|i| UnicodeWidthStr::width(i) + 1)
-                .unwrap_or(0);
-            UnicodeWidthStr::width(l.label.as_str()) + icon_w
-        })
-        .max()
-        .unwrap_or(0);
+pub fn format_info_lines(
+    info_lines: &[InfoLine],
+    separator: &str,
+    icon_only: bool,
+    key_type: Option<&str>,
+) -> Vec<String> {
+    let show_icon = key_type != Some("title");
+    let show_label = !icon_only && key_type != Some("icon");
+
+    let label_width = if show_label {
+        info_lines
+            .iter()
+            .filter(|l| {
+                !l.label.is_empty() && !l.value.is_empty() && !l.label.starts_with("---DIVIDER")
+            })
+            .map(|l| {
+                let icon_w = if show_icon {
+                    l.icon
+                        .as_deref()
+                        .map(|i| UnicodeWidthStr::width(i) + 1)
+                        .unwrap_or(0)
+                } else {
+                    0
+                };
+                UnicodeWidthStr::width(l.label.as_str()) + icon_w
+            })
+            .max()
+            .unwrap_or(0)
+    } else {
+        0
+    };
+
+    let sep_trimmed = separator.trim();
+    let is_sep_empty = sep_trimmed.is_empty();
 
     info_lines
         .iter()
         .map(|line| {
+            if line.label.starts_with("---DIVIDER") {
+                return line.label.clone();
+            }
+
             if line.label.is_empty() && line.icon.is_none() {
                 if line.value.is_empty() {
                     return String::new();
@@ -297,34 +494,76 @@ pub fn format_info_lines(info_lines: &[InfoLine], separator: &str) -> Vec<String
                     return format!("{}{}{}", line.color, line.value, RESET);
                 }
             } else if line.value.is_empty() {
-                let icon_str = line
-                    .icon
-                    .as_deref()
-                    .map(|i| format!("{i} "))
-                    .unwrap_or_default();
+                let icon_str = if show_icon {
+                    line.icon
+                        .as_deref()
+                        .map(|i| format!("{i} "))
+                        .unwrap_or_default()
+                } else {
+                    String::new()
+                };
                 return format!("{BOLD}{}{icon_str}{}{RESET}", line.color, line.label);
             }
 
-            let icon_str = line
-                .icon
-                .as_deref()
-                .map(|i| format!("{i} "))
-                .unwrap_or_default();
-            let icon_w = line
-                .icon
-                .as_deref()
-                .map(|i| UnicodeWidthStr::width(i) + 1)
-                .unwrap_or(0);
-            let cur_label_w = UnicodeWidthStr::width(line.label.as_str()) + icon_w;
-            let label_pad = " ".repeat(label_width.saturating_sub(cur_label_w));
+            let icon_str = if show_icon {
+                line.icon
+                    .as_deref()
+                    .map(|i| format!("{i} "))
+                    .unwrap_or_default()
+            } else {
+                String::new()
+            };
 
-            format!(
-                "{BOLD}{color}{icon_str}{label}{RESET}{label_pad} {sep} {value}",
-                color = line.color,
-                label = line.label,
-                sep = separator,
-                value = line.value
-            )
+            if !show_label || line.label.is_empty() {
+                let icon_display = if show_icon && line.icon.is_some() {
+                    format!(
+                        "{BOLD}{}{}{RESET}",
+                        line.color,
+                        line.icon.as_deref().unwrap_or("")
+                    )
+                } else {
+                    String::new()
+                };
+
+                if is_sep_empty {
+                    if icon_display.is_empty() {
+                        line.value.clone()
+                    } else {
+                        format!("{icon_display}  {}", line.value)
+                    }
+                } else if icon_display.is_empty() {
+                    line.value.clone()
+                } else {
+                    format!("{icon_display} {sep_trimmed} {}", line.value)
+                }
+            } else {
+                let icon_w = if show_icon {
+                    line.icon
+                        .as_deref()
+                        .map(|i| UnicodeWidthStr::width(i) + 1)
+                        .unwrap_or(0)
+                } else {
+                    0
+                };
+                let cur_label_w = UnicodeWidthStr::width(line.label.as_str()) + icon_w;
+                let label_pad = " ".repeat(label_width.saturating_sub(cur_label_w));
+
+                if is_sep_empty {
+                    format!(
+                        "{BOLD}{color}{icon_str}{label}{RESET}{label_pad}  {value}",
+                        color = line.color,
+                        label = line.label,
+                        value = line.value
+                    )
+                } else {
+                    format!(
+                        "{BOLD}{color}{icon_str}{label}{RESET}{label_pad} {sep_trimmed} {value}",
+                        color = line.color,
+                        label = line.label,
+                        value = line.value
+                    )
+                }
+            }
         })
         .collect()
 }
@@ -556,12 +795,18 @@ mod tests {
                 color: "\x1b[33m".into(),
             },
         ];
-        let formatted = format_info_lines(&lines, ":");
+        let formatted = format_info_lines(&lines, ":", false, None);
         assert_eq!(formatted.len(), 4);
         assert!(formatted[0].contains("OS"));
         assert!(formatted[1].is_empty()); // break line is empty
         assert!(formatted[2].contains("Custom"));
         assert!(formatted[3].contains("Raw Text"));
+
+        // Test icon_only mode
+        let icon_only_formatted = format_info_lines(&lines, "•", true, None);
+        assert!(icon_only_formatted[0].contains("•"));
+        assert!(!icon_only_formatted[0].contains("OS")); // label omitted
+        assert!(icon_only_formatted[0].contains("Linux"));
     }
 
     #[test]
@@ -575,6 +820,27 @@ mod tests {
         assert!(boxed[2].contains("World!"));
         assert!(boxed[3].starts_with('╰'));
         assert!(boxed[3].ends_with('╯'));
+    }
+
+    #[test]
+    fn test_wrap_in_box_advanced_with_title_and_divider() {
+        let lines = vec![
+            "---DIVIDER:System---".to_string(),
+            "OS: Linux".to_string(),
+            "---DIVIDER---".to_string(),
+            "CPU: 8 cores".to_string(),
+        ];
+        let boxed =
+            wrap_in_box_advanced(&lines, Some("double"), Some("cyan"), None, Some("Specs"), 1);
+        assert_eq!(boxed.len(), 6);
+        assert!(boxed[0].contains("Specs"));
+        assert!(boxed[0].contains('╔'));
+        assert!(boxed[1].contains("System"));
+        assert!(boxed[1].contains('╠'));
+        assert!(boxed[2].contains("OS: Linux"));
+        assert!(boxed[3].contains('╠'));
+        assert!(boxed[4].contains("CPU: 8 cores"));
+        assert!(boxed[5].contains('╚'));
     }
 
     #[test]
@@ -592,12 +858,57 @@ mod tests {
             padding: 1,
             center: false,
             border: false,
+            border_style: None,
+            border_color: None,
+            border_chars: None,
+            border_title: None,
+            box_padding: 1,
             palette_lines: None,
+            palette_position: "bottom",
+            icon_only: false,
+            key_type: None,
+            border_image: None,
         };
         let lines = build_right_lines(&info, &opts);
         assert_eq!(lines.len(), 3);
         // Header line must contain the 24-bit TrueColor for #ff007f (255, 0, 127)
         assert!(lines[0].contains("\x1b[38;2;255;0;127m"));
         assert!(lines[0].contains("user@host"));
+    }
+
+    #[test]
+    fn test_build_right_lines_with_border_image() {
+        let info = vec![InfoLine {
+            icon: None,
+            label: "OS".to_string(),
+            value: "Linux".to_string(),
+            color: "".to_string(),
+        }];
+        let border_lines = vec!["[IMG_TOP]".to_string(), "[IMG_BOT]".to_string()];
+        let opts = RenderOptions {
+            header: None,
+            header_color: None,
+            separator: ": ",
+            padding: 1,
+            center: false,
+            border: false,
+            border_style: None,
+            border_color: None,
+            border_chars: None,
+            border_title: None,
+            box_padding: 1,
+            palette_lines: None,
+            palette_position: "bottom",
+            icon_only: false,
+            key_type: None,
+            border_image: Some(&border_lines),
+        };
+        let lines = build_right_lines(&info, &opts);
+        assert_eq!(lines.len(), 2);
+        assert!(lines[0].starts_with("[IMG_TOP]"));
+        let clean0 = strip_ansi(&lines[0]);
+        assert!(clean0.contains("OS"));
+        assert!(clean0.contains("Linux"));
+        assert!(lines[1].starts_with("[IMG_BOT]"));
     }
 }

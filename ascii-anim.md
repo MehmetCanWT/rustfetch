@@ -1,55 +1,55 @@
-# 🎬 RustFetch ASCII & Animasyon Kılavuzu (ASCII & Animation Guide)
+# 🎬 RustFetch ASCII & Animation Guide
 
-RustFetch, sadece dahili dağıtım logolarını veya statik görselleri değil, **kullanıcıların kendi hazırladığı ASCII çizimlerini** ve **kare kare (frame-by-frame) hareketli ASCII animasyonlarını** sıfır gecikmeyle terminalde oynatmayı destekler.
-
----
-
-## 📑 İçindekiler
-1. [Özel ASCII Çizimi Kullanımı (2D & 3D)](#1-özel-ascii-çizimi-kullanımı-2d--3d)
-2. [Kare Kare ASCII Animasyonu Oluşturma](#2-kare-kare-ascii-animasyonu-oluşturma)
-   - [Yöntem A: Tek Dosya Formatı (Ayraçlı)](#yöntem-a-tek-dosya-formatı-ayraçlı)
-   - [Yöntem B: Klasör Formatı (Kare Dosyaları)](#yöntem-b-klasör-formatı-kare-dosyaları)
-3. [Renklendirme ve ANSI Desteği](#3-renklendirme-ve-ansi-desteği)
-4. [Akıllı Klavye Devri (`exit_on_key`)](#4-akıllı-klavye-devri-exit_on_key)
-5. [Konfigürasyon Referansı (`config.toml`)](#5-konfigürasyon-referansı-configtoml)
-6. [CLI Parametreleri](#6-cli-parametreleri)
-7. [Hazır Örnekler](#7-hazır-örnekler)
+RustFetch supports not only built-in distribution ASCII logos and static raster graphics, but also **custom user-defined ASCII artwork** and **high-performance frame-by-frame animated ASCII graphics** rendered in real-time with zero terminal flicker.
 
 ---
 
-## 1. Özel ASCII Çizimi Kullanımı (2D & 3D)
+## 📑 Table of Contents
+1. [Custom ASCII Art Usage (2D & 3D)](#1-custom-ascii-art-usage-2d--3d)
+2. [Creating Frame-by-Frame ASCII Animations](#2-creating-frame-by-frame-ascii-animations)
+   - [Method A: Delimited Single File](#method-a-delimited-single-file)
+   - [Method B: Directory of Frame Files](#method-b-directory-of-frame-files)
+3. [TrueColor & ANSI Escape Code Support](#3-truecolor--ansi-escape-code-support)
+4. [Intelligent Shell Handoff (`exit_on_key`)](#4-intelligent-shell-handoff-exit_on_key)
+5. [Configuration Reference (`config.toml`)](#5-configuration-reference-configtoml)
+6. [CLI Command Reference](#6-cli-command-reference)
+7. [Bundled Showcase Examples](#7-bundled-showcase-examples)
 
-Kendi hazırladığınız veya internetten bulduğunuz herhangi bir ASCII sanatını bir `.txt` veya `.ascii` dosyasına kaydedip RustFetch'e verebilirsiniz.
+---
 
-### A. 2D Statik Gösterim
+## 1. Custom ASCII Art Usage (2D & 3D)
+
+Any ASCII artwork saved as a `.txt` or `.ascii` file can be passed directly to RustFetch.
+
+### A. Static 2D Rendering
 ```bash
-rustfetch --ascii /yol/benim_logom.txt
+rustfetch --ascii /path/to/my_logo.txt
 ```
-RustFetch bu çizimi okur, genişliğini otomatik hesaplar ve sistem telemetrinizin soluna hizalar.
+RustFetch automatically measures the glyph bounds, aligns the ASCII art to the left of your system telemetry, and pads the layout cleanly.
 
-### B. 3D Gerçek Zamanlı Döndürme
-Kendi ASCII çiziminizi gerçek zamanlı 3 boyutlu bir kabartma modele dönüştürüp döndürmek için:
+### B. Real-Time 3D Mesh Rotation
+Convert any static 2D ASCII art into a rotating 3D heightmap relief mesh:
 ```bash
-rustfetch --ascii /yol/benim_logom.txt --3d
+rustfetch --ascii /path/to/my_logo.txt --3d
 ```
-RustFetch, çiziminizdeki her karakterin mürekkep yoğunluğunu (`char_weight_utf8`) analiz ederek derinlik haritası (heightmap) oluşturur ve çiziminizi uzayda 3 eksende döndürerek gölgelendirir.
+RustFetch analyzes the glyph ink density of each character (`char_weight_utf8`), constructs a 3D depth field, and applies real-time lighting shaders as it rotates across 3 axes.
 
 ---
 
-## 2. Kare Kare ASCII Animasyonu Oluşturma
+## 2. Creating Frame-by-Frame ASCII Animations
 
-RustFetch'te hareketli bir ASCII animasyonu oynatmak için iki yöntem mevcuttur:
+RustFetch supports two intuitive formats for multi-frame animations:
 
-### Yöntem A: Tek Dosya Formatı (Ayraçlı)
-Tüm animasyon karelerini tek bir metin dosyasında toplayabilirsiniz. Karelerin arasına şu ayraçlardan birini koymanız yeterlidir:
+### Method A: Delimited Single File
+Combine all animation frames into a single `.txt` file separated by standard delimiter markers:
 - `===FRAME===`
 - `===`
 - `---FRAME---`
 - `---`
 - `[frame]`
-- veya VT terminal standartı Form Feed (`\x0c`)
+- Form Feed control character (`\x0c`)
 
-**Örnek `animasyon.txt`**:
+**Example `animation.txt`**:
 ```text
   ( o.o )
    > ^ <
@@ -64,17 +64,17 @@ Tüm animasyon karelerini tek bir metin dosyasında toplayabilirsiniz. Karelerin
    > ^ <
 ```
 
-Çalıştırmak için:
+To run:
 ```bash
-rustfetch --ascii-anim animasyon.txt --fps 10
+rustfetch --ascii-anim animation.txt --fps 10
 ```
 
 ---
 
-### Yöntem B: Klasör Formatı (Kare Dosyaları)
-Animasyon karelerinizi ayrı ayrı dosyalarda tutmak isterseniz bir klasör oluşturup içine dosyaları koyun:
+### Method B: Directory of Frame Files
+Organize individual frame files inside a single folder:
 ```text
-animasyon_klasoru/
+my_animation/
 ├── 01.txt
 ├── 02.txt
 ├── 03.txt
@@ -82,89 +82,89 @@ animasyon_klasoru/
 ```
 
 > [!TIP]
-> **Doğal Numerik Sıralama (Natural Sort):** Dosya isimleriniz `frame_1.txt`, `frame_2.txt`, ..., `frame_10.txt` şeklinde olsa bile RustFetch akıllı numerik algoritması sayesinde 10'u 2'den sonraya koyar. Sıralama asla bozulmaz.
+> **Natural Numeric Sorting:** File names like `frame_1.txt`, `frame_2.txt`, ..., `frame_10.txt` are sorted naturally so `frame_10` correctly follows `frame_9` instead of jumping ahead of `frame_2`.
 
-Çalıştırmak için klasör yolunu vermeniz yeterlidir:
+To run:
 ```bash
-rustfetch --ascii-anim animasyon_klasoru/ --fps 15
+rustfetch --ascii-anim my_animation/ --fps 15
 ```
 
 ---
 
-## 3. Renklendirme ve ANSI Desteği
+## 3. TrueColor & ANSI Escape Code Support
 
-RustFetch, ASCII karelerinizin içindeki tüm ANSI TrueColor (`\x1b[38;2;R;G;Bm`) ve standart terminal renk kaçış dizilerini (escape codes) destekler.
-- Kitty veya modern terminallerin temaları renklerinizi bozmaz.
-- Her satırda farklı renkler veya karakter bazında gradyanlar kullanabilirsiniz.
+RustFetch preserves all 24-bit TrueColor (`\x1b[38;2;R;G;Bm`) and 16-color ANSI escape sequences embedded in your ASCII art:
+- Terminal emulator color schemes do not distort your explicit TrueColor codes.
+- Gradients and per-character shading effects render flawlessly across each frame.
 
 ---
 
-## 4. Akıllı Klavye Devri (`exit_on_key`)
+## 4. Intelligent Shell Handoff (`exit_on_key`)
 
-Terminal başlangıcında (`.bashrc` / `.zshrc`) animasyon oynatırken yaşanan en büyük sorun kullanıcının komut yazmasının engellenmesidir.
+Running an interactive animation upon opening your terminal via `~/.bashrc` or `~/.zshrc` typically risks blocking the shell prompt or discarding typed keystrokes.
 
-RustFetch bu sorunu **POSIX stdin yoklaması (`ioctl(FIONREAD)`)** ile çözer:
-- Animasyon terminalinizi açtığınızda arka planda akıcı şekilde oynamaya başlar.
-- **Klavyede herhangi bir tuşa bastığınız (komut yazmaya başladığınız) milisaniyede animasyon durur.**
-- Bastığınız tuşlar yutulmaz; doğrudan kabuğunuza (Bash/Zsh/Fish) akar.
-- Ekranda son animasyon karesi ve telemetri şık bir şekilde kalır.
+RustFetch solves this using **non-blocking POSIX stdin polling (`ioctl(FIONREAD)`)**:
+- The animation begins playing smoothly as your terminal window opens.
+- **The millisecond you press any key (start typing a shell command), the animation loop terminates immediately.**
+- The pressed key is **preserved** and delivered directly to your shell without dropping characters.
+- The final frame and system telemetry remain cleanly displayed on screen.
 
-> Animasyonun sadece `Ctrl+C` veya `q` ile çıkmasını isterseniz `--hold` bayrağını ekleyebilirsiniz:
+> To prevent automatic key handoff and keep the animation running until `Ctrl+C` or `q` is pressed, use `--hold`:
 > ```bash
-> rustfetch --ascii-anim animasyon.txt --hold
+> rustfetch --ascii-anim animation.txt --hold
 > ```
 
 ---
 
-## 5. Konfigürasyon Referansı (`config.toml`)
+## 5. Configuration Reference (`config.toml`)
 
-Animasyonunuzu veya özel logonuzu kalıcı hale getirmek için `~/.config/rustfetch/config.toml` dosyanıza ekleyebilirsiniz:
+To make your animation or custom ASCII logo permanent, add it to `~/.config/rustfetch/config.toml`:
 
 ```toml
 [general.logo]
 enabled = true
-# Statik özel ASCII dosyası:
+# Static ASCII art path:
 ascii_path = "~/.config/rustfetch/my_logo.txt"
 
-# Veya kare kare ASCII animasyonu:
+# Or animated multi-frame ASCII:
 [general.logo.animation]
 enabled = true
-path = "~/.config/rustfetch/animations/spinner.txt" # veya bir klasör yolu
+path = "~/.config/rustfetch/animations/spinner.txt" # or a directory path
 fps = 15.0
-exit_on_key = true # Tuşa basılınca kabuğu devret
-infinite = true    # Sürekli döngü
+exit_on_key = true # Immediate handoff to shell on keypress
+infinite = true    # Continuous loop
 ```
 
 ---
 
-## 6. CLI Parametreleri
+## 6. CLI Command Reference
 
-| Parametre | Açıklama | Varsayılan |
+| Flag | Description | Default |
 | :--- | :--- | :--- |
-| `--ascii <YOL>` | Statik özel ASCII sanat dosyası (2D veya 3D) | Yok |
-| `--ascii-anim <YOL>` / `--anim` | Kare kare ASCII animasyon dosyası veya klasörü | Yok |
-| `--fps <FLOAT>` | Animasyon saniyedeki kare hızı (1.0 - 60.0) | `15.0` |
-| `--frames <N>` | Belirtilen kare sayısı kadar oynatıp dur | Sınırsız |
-| `--hold` | Klavye yazımında durmayı engeller (`Ctrl+C` veya `q` ile çıkılır) | `false` |
-| `--exit-on-key` | Tuşa basıldığında anında kabuğa devreder | `true` |
+| `--ascii <PATH>` | Static custom ASCII file (2D or 3D) | None |
+| `--ascii-anim <PATH>` / `--anim` | Animated ASCII file or frame directory | None |
+| `--fps <FLOAT>` | Frame rate in FPS (1.0 to 60.0) | `15.0` |
+| `--frames <N>` | Maximum frames to play before exiting | Infinite |
+| `--hold` | Keep playing until manual interrupt (`Ctrl+C` or `q`) | `false` |
+| `--exit-on-key` | Immediately hand off control to shell on any keypress | `true` |
 
 ---
 
-## 7. Hazır Örnekler
+## 7. Bundled Showcase Examples
 
-Depo içerisinde hemen test edebileceğiniz örnek animasyonlar mevcuttur:
+Test these bundled assets directly from the repository:
 
-1. **Tek Dosyalı Dönen Gösterge (`spinner.txt`)**:
+1. **Delimited Single File Spinner (`spinner.txt`)**:
    ```bash
    rustfetch --ascii-anim assets/animations/spinner.txt --fps 15
    ```
 
-2. **Klasör Bazlı Nabız Animasyonu (`pulse/`)**:
+2. **Directory Pulse Animation (`pulse/`)**:
    ```bash
    rustfetch --ascii-anim assets/animations/pulse/ --fps 12
    ```
 
-3. **Özel Çizimi 3D Olarak Döndürme**:
+3. **Rotating 3D Relief Mesh from ASCII Art**:
    ```bash
    rustfetch --ascii assets/animations/pulse/01.txt --3d
    ```

@@ -54,15 +54,37 @@ Designed as a modern, zero-fork alternative to `neofetch` and `fastfetch`, RustF
 
 ---
 
+## 📚 Complete Documentation Hub (`docs/`)
+
+Explore dedicated, in-depth guides for every single customization feature in RustFetch:
+
+| No | Guide | Description |
+|---|---|---|
+| **01** | [**Configuration & Quick Start**](docs/01-configuration.md) | `config.toml` hierarchy, Fastfetch auto-import, CLI flags, and layout sizing. |
+| **02** | [**Colors, Themes & Gradients**](docs/02-colors-themes-gradients.md) | HEX/RGB TrueColor, 13+ built-in themes (Catppuccin, Dracula, Tokyo Night), and linear gradients. |
+| **03** | [**Boxes, Borders & Image Frames**](docs/03-boxes-and-borders.md) | 8 container styles, custom 11-char `border_chars`, titles, dividers, and **Image Borders** (`border_image`). |
+| **04** | [**Custom ASCII Art**](docs/04-ascii-art.md) | Custom ASCII art, 2D/3D extrusion, and Neofetch `$1..$6` color variable substitution. |
+| **05** | [**Images & Graphics Protocols**](docs/05-images-and-protocols.md) | Kitty, Sixel, iTerm2, and half-block rendering, random wallpaper galleries, and auto-color extraction. |
+| **06** | [**3D Terminal Graphics Engine**](docs/06-3d-terminal-engine.md) | Real-time 3D ASCII mesh extrusion, relief heightmaps, Blinn-Phong lighting, and sub-cell rasterization. |
+| **07** | [**ASCII Animations & GIF Player**](docs/07-ascii-animations-gifs.md) | Frame-by-frame ASCII animation player, GIF/MP4 conversion guide, zero-flicker double buffering. |
+| **08** | [**Modules & Nerd Font v3 Icons**](docs/08-modules-and-icons.md) | All 28+ telemetry collectors, modern Nerd Font v3 icons, distro-aware OS glyphs, progress bars & custom shell commands. |
+| **09** | [**Layout Presets Showcase**](docs/09-presets-showcase.md) | Showcase of `card`, `dots`, `clean`, `neofetch`, `brackets`, `retro`, `minimal`, `modern`, and `compact`. |
+
+---
+
 ## Key Features
 
 * **Universal Distro Support:** Native ASCII logos and pure-filesystem package counters for Fedora, Arch, Ubuntu, Debian, Alpine, Void, NixOS, Gentoo, openSUSE, Mint, Manjaro, Pop!_OS, EndeavourOS, Kali, SteamOS, Artix, Red Hat / CentOS / Rocky / Alma.
+* **Modern Nerd Font v3 Glyphs:** Crisp, non-broken Material Design symbols for every module, plus distro-aware OS icons (Arch `󰣇`, Fedora `󰣛`, Ubuntu `󰕈`, Debian `󰣚`, NixOS `󱄅`, Gentoo `󰣨`).
+* **Ultra-Deep Ricing & Theming:** 13+ built-in color themes (Catppuccin Mocha/Latte/Macchiato/Frappé, Dracula, Tokyo Night, Gruvbox, Nord, Rosé Pine, Cyberpunk, Monokai, OneDark, Solarized), 24-bit TrueColor linear text gradients, and Neofetch `$1..$6` color replacements.
+* **Advanced Box & Border Engine:** 8 built-in border styles (`ascii`, `light`, `heavy`, `double`, `rounded`, `brackets`, `dots`, `block`), custom 11-char strings (`border_chars`), colored borders, embedded titles (`╭── System ────╮`), and section divider lines (`├── Hardware ──┤`).
+* **Image Borders & Decorative Frames (`border_image`):** Frame telemetry with any PNG/JPG/WebP illustration rendered via TrueColor ANSI half-blocks or Kitty graphics protocol.
 * **Universal Terminal Compatibility:** Seamlessly adapts across GUI emulators (Kitty, Alacritty, Ghostty, Foot, WezTerm), Linux Virtual Consoles (`TERM=linux` automatically downsamples 24-bit TrueColor to 16 ANSI colors), dumb terminals, and standard `NO_COLOR` environments.
 * **Microsecond Execution (~4ms):** Reads hardware topology directly from `/sys/bus/pci/devices`, `/sys/class/drm`, and `/proc`, bypassing `lspci`, `xrandr`, and shell sub-processes.
-* **Built-in Presets (`--preset`):** Instant layouts including `card` (rounded box container), `minimal` (terse hardware view), `modern` (dot separators and banners), and `compact`.
+* **Built-in Presets (`--preset`):** Instant layouts including `card`, `dots`, `clean`, `neofetch`, `brackets`, `retro`, `minimal`, `modern`, and `compact`.
 * **Microsecond Telemetry Profiler (`--benchmark`):** Profile exact microsecond execution latency across all active telemetry modules with visual progress bars.
 * **Fastfetch Auto-Migration:** Automatically inspects existing Fastfetch configurations (`~/.config/fastfetch/config.jsonc`) in a read-only manner on first run. Migrates module ordering, custom icons, and logo paths to `~/.config/rustfetch/config.toml` without modifying your Fastfetch setup.
-* **Modern Image Rendering:** Full support for the Kitty graphics protocol (`protocol = "kitty"`) and universal TrueColor ANSI half-block rendering (`protocol = "halfblock"`).
+* **Modern Image Rendering:** Full support for the Kitty graphics protocol (`protocol = "kitty"`), Sixel, iTerm2, and universal TrueColor ANSI half-block rendering (`protocol = "halfblock"`).
 * **Native Dominant Color Extraction (`auto_color`):** Automatically extracts vibrant accent colors from images in pure Rust using HSV saturation scoring.
 * **Dual Commands (`rustfetch` & `rfetch`):** Both standard and short executable names are installed out of the box with shell completions (Bash, Zsh, Fish) and a UNIX man page (`man rustfetch`).
 
@@ -156,11 +178,16 @@ RustFetch provides built-in visual presets that can be triggered on the command 
 
 | Preset | Command | Description |
 | :--- | :--- | :--- |
-| **`card`** | `rustfetch --preset card` | Encapsulates output in a rounded Unicode card (`╭───╮`, `│   │`, `╰───╯`) with centered logo. |
-| **`minimal`** | `rustfetch --preset minimal` | Clean, logo-free hardware summary ideal for minimalists or server MOTDs. |
-| **`modern`** | `rustfetch --preset modern` | Dot-separated labels (`OS ─ Fedora`) with vibrant banner accents. |
+| **`card`** | `rustfetch --preset card` | Rounded Unicode card (`╭───╮`, `│   │`, `╰───╯`) with section dividers and bottom palette dots. |
+| **`dots`** | `rustfetch --preset dots` | Minimalist dot layout (`󰣇 • Arch Linux x86_64`) with vibrant bottom color dots. |
+| **`clean`** | `rustfetch --preset clean` | Ultra-clean icon-only format with no borders or extra symbols. |
+| **`neofetch`** | `rustfetch --preset neofetch` | Nostalgic Neofetch style with `user@host`, dashed underline, and classic 16-color blocks. |
+| **`brackets`** | `rustfetch --preset brackets` | Balanced card bounded by bracket corner characters (`⎡ ... ⎤`). |
+| **`retro`** | `rustfetch --preset retro` | Retro terminal look with progress bars for RAM/disk and Pacman color symbols (`󰮯`). |
+| **`minimal`** | `rustfetch --preset minimal` | Logo-free, non-colored hardware summary ideal for server MOTDs. |
+| **`modern`** | `rustfetch --preset modern` | Dot-separated labels (`OS -> Fedora`) with progress meters. |
 | **`compact`** | `rustfetch --preset compact` | Two-character terse labels (`os`, `kr`, `up`, `pk`, `cp`, `gp`, `mm`). |
-| **`default`** | `rustfetch --preset default` | Standard aesthetic layout with auto-detected distro ASCII art. |
+| **`default`** | `rustfetch --preset default` | Standard aesthetic layout with auto-detected distro ASCII art and Nerd Font v3 icons. |
 
 ---
 
@@ -200,7 +227,7 @@ rustfetch --3d --frames 100
 
 ## 🎬 Custom ASCII Art & Frame Animations (`--ascii` / `--ascii-anim`)
 
-> 📖 **Full Guide & Formatting:** Check out **[ascii-anim.md](ascii-anim.md)** for a complete walkthrough on creating custom multi-frame animations, delimiter syntax, and directory setups.
+> 📖 **Full Guide & Formatting:** Check out **[docs/07-ascii-animations-gifs.md](docs/07-ascii-animations-gifs.md)** and **[ascii-anim.md](ascii-anim.md)** for a complete walkthrough on creating custom multi-frame animations, delimiter syntax, and directory setups.
 
 - **Custom Static ASCII (`--ascii <PATH>`):** Use your own custom ASCII text file in 2D or extrude it into an interactive 3D model with `--3d` (`rfetch --ascii my_logo.txt --3d`).
 - **Multi-Frame ASCII Animations (`--ascii-anim <PATH>`):** Play continuous frame-by-frame ASCII animations from a single file (separated by `===FRAME===` / `---`) or a directory of frames (`01.txt`, `02.txt`).
@@ -228,7 +255,16 @@ rustfetch --ascii-anim assets/animations/pulse/ --fps 12
 Usage: rustfetch [OPTIONS] (or rfetch [OPTIONS])
 
 Options:
-      --preset <NAME>          Apply a built-in layout preset [card, minimal, modern, compact, default]
+      --preset <NAME>          Apply a built-in layout preset [card, dots, clean, neofetch, brackets, retro, minimal, modern, compact, default]
+      --theme <NAME>           Apply a color theme [catppuccin-mocha, dracula, tokyo-night, gruvbox, nord, rose-pine, etc.]
+      --border                 Wrap telemetry output in a decorative box container
+      --border-style <STYLE>   Border box style [ascii, light, heavy, double, rounded, brackets, dots, block]
+      --border-color <COLOR>   Color of border box (name or hex, e.g. magenta, #bd93f9)
+      --border-title <TITLE>   Optional title embedded in top border line (e.g. "System")
+      --border-image <PATH>    Path to image file used as a decorative border/frame
+      --border-image-width <N> Column width for border image [default: 24]
+      --icon-only              Show only icons and telemetry values (hide labels)
+      --separator <SEP>        Custom separator string between label/icon and value (e.g. " • ")
       --3d                     Run in animated 3D ASCII art mode (continuous autonomous rotation)
       --ascii <PATH>           Path to custom static ASCII art file (used in 2D or 3D)
       --ascii-anim <PATH>      Path to multi-frame ASCII animation file or directory (alias: --anim)

@@ -1,6 +1,7 @@
 use base64::prelude::*;
+use std::io::Write;
 
-pub fn print_kitty(rgba_data: &[u8], width: u32, height: u32) {
+pub fn print_kitty(rgba_data: &[u8], width: u32, height: u32, cols: u32, rows: u32) {
     let encoded = BASE64_STANDARD.encode(rgba_data);
     let chunks: Vec<&str> = encoded
         .as_bytes()
@@ -12,13 +13,14 @@ pub fn print_kitty(rgba_data: &[u8], width: u32, height: u32) {
         let m = if i == chunks.len() - 1 { 0 } else { 1 };
         if i == 0 {
             print!(
-                "\x1b_Ga=T,q=2,f=32,s={},v={},m={};{}\x1b\\",
-                width, height, m, chunk
+                "\x1b_Ga=T,c={},r={},q=2,f=32,s={},v={},m={};{}\x1b\\",
+                cols, rows, width, height, m, chunk
             );
         } else {
             print!("\x1b_Gm={},q=2;{}\x1b\\", m, chunk);
         }
     }
+    let _ = std::io::stdout().flush();
 }
 
 pub struct KittyFrame<'a> {
@@ -26,7 +28,7 @@ pub struct KittyFrame<'a> {
     pub delay_ms: u32,
 }
 
-pub fn print_kitty_animation(frames: &[KittyFrame], width: u32, height: u32) {
+pub fn print_kitty_animation(frames: &[KittyFrame], width: u32, height: u32, cols: u32, rows: u32) {
     if frames.is_empty() {
         return;
     }
@@ -47,8 +49,8 @@ pub fn print_kitty_animation(frames: &[KittyFrame], width: u32, height: u32) {
             if chunk_idx == 0 {
                 let a = if frame_idx == 0 { 'T' } else { 'f' };
                 print!(
-                    "\x1b_Ga={},q=2,i={},f=32,s={},v={},z={},m={};{}\x1b\\",
-                    a, image_id, width, height, frame.delay_ms, m, chunk
+                    "\x1b_Ga={},c={},r={},q=2,i={},f=32,s={},v={},z={},m={};{}\x1b\\",
+                    a, cols, rows, image_id, width, height, frame.delay_ms, m, chunk
                 );
             } else if frame_idx == 0 {
                 print!("\x1b_Gm={},q=2;{}\x1b\\", m, chunk);
@@ -59,4 +61,5 @@ pub fn print_kitty_animation(frames: &[KittyFrame], width: u32, height: u32) {
     }
 
     print!("\x1b_Ga=a,q=2,i={},s=3,v=1\x1b\\", image_id);
+    let _ = std::io::stdout().flush();
 }

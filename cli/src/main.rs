@@ -111,6 +111,33 @@ struct Cli {
     #[arg(long)]
     benchmark: bool,
 
+    #[arg(long)]
+    border: bool,
+
+    #[arg(long, value_name = "STYLE")]
+    border_style: Option<String>,
+
+    #[arg(long, value_name = "COLOR")]
+    border_color: Option<String>,
+
+    #[arg(long, value_name = "TITLE")]
+    border_title: Option<String>,
+
+    #[arg(long)]
+    icon_only: bool,
+
+    #[arg(long, value_name = "SEP")]
+    separator: Option<String>,
+
+    #[arg(long, value_name = "THEME")]
+    theme: Option<String>,
+
+    #[arg(long, value_name = "PATH")]
+    border_image: Option<String>,
+
+    #[arg(long, value_name = "COLS")]
+    border_image_width: Option<usize>,
+
     #[arg(long, value_enum, value_name = "SHELL")]
     completions: Option<Shell>,
 }
@@ -181,7 +208,7 @@ fn main() {
     let mut config = if let Some(preset_name) = &cli.preset {
         Config::from_preset(preset_name).unwrap_or_else(|| {
             eprintln!(
-                "Unknown preset: {preset_name}. Available presets: default, minimal, card, modern, compact"
+                "Unknown preset: {preset_name}. Available presets: default, minimal, clean, dots, card, brackets, neofetch, retro, modern, compact"
             );
             std::process::exit(1);
         })
@@ -209,6 +236,44 @@ fn main() {
     if let Some(color) = &cli.color {
         for mc in &mut config.modules {
             mc.color = Some(color.clone());
+        }
+    }
+    if cli.border {
+        config.general.border = true;
+    }
+    if let Some(bs) = &cli.border_style {
+        config.general.border = true;
+        config.general.border_style = Some(bs.clone());
+    }
+    if let Some(bc) = &cli.border_color {
+        config.general.border_color = Some(bc.clone());
+    }
+    if let Some(bt) = &cli.border_title {
+        config.general.border_title = Some(bt.clone());
+    }
+    if cli.icon_only {
+        config.general.icon_only = true;
+    }
+    if let Some(sep) = &cli.separator {
+        config.general.separator = sep.clone();
+    }
+    if let Some(t) = &cli.theme {
+        config.general.theme = Some(t.clone());
+    }
+    if let Some(bi) = &cli.border_image {
+        config.general.border_image = Some(bi.clone());
+    }
+    if let Some(bw) = cli.border_image_width {
+        config.general.border_image_width = Some(bw);
+    }
+    if let Some(theme_name) = &config.general.theme {
+        if let Some(t) = rustfetch_render::get_theme(theme_name) {
+            if config.general.border_color.is_none() {
+                config.general.border_color = Some(format!(
+                    "#{:02x}{:02x}{:02x}",
+                    t.border.0, t.border.1, t.border.2
+                ));
+            }
         }
     }
 
@@ -300,19 +365,39 @@ fn run_once(
         }
 
         if let Some(img_path) = &resolved_image_path {
-            dynamic_color = get_image_color(img_path, config.general.logo.auto_color);
+            let expanded_img = shellexpand::tilde(img_path).to_string();
+            resolved_image_path = Some(expanded_img.clone());
+            dynamic_color = get_image_color(&expanded_img, config.general.logo.auto_color);
             if config.general.colors.image_palette {
-                image_palette = rustfetch_render::extract_color_palette(img_path, 16);
+                image_palette = rustfetch_render::extract_color_palette(&expanded_img, 16);
             }
         }
     }
 
     let palette_lines = if config.general.colors.enabled {
-        Some(layout::build_color_palette(
+        let custom_colors: Option<Vec<(u8, u8, u8)>> = config
+            .general
+            .colors
+            .custom
+            .as_ref()
+            .map(|list| {
+                list.iter()
+                    .filter_map(|s| rustfetch_render::parse_color(s))
+                    .collect()
+            })
+            .or(image_palette);
+
+        let mut lines = layout::build_color_palette(
             &config.general.colors.symbol,
             config.general.colors.block,
-            image_palette.as_deref(),
-        ))
+            custom_colors.as_deref(),
+        );
+
+        if config.general.colors.rows == 1 && lines.len() > 1 {
+            lines.truncate(1);
+        }
+
+        Some(lines)
     } else {
         None
     };
@@ -320,8 +405,16 @@ fn run_once(
     let (logo_block, distro_color) = if show_logo && resolved_image_path.is_none() {
         if let Some(ascii_p) = custom_ascii_path {
             let p = std::path::Path::new(ascii_p);
-            match rustfetch_core::ascii::load_ascii_lines(p) {
-                Ok(lines) if !lines.is_empty() => {
+            match std::fs::read_to_string(p) {
+                Ok(raw) if !raw.is_empty() => {
+                    let mut processed = raw;
+                    if let Some(colors) = &config.general.logo.colors {
+                        let codes: Vec<String> =
+                            colors.iter().map(|c| layout::color_code(c)).collect();
+                        let refs: Vec<&str> = codes.iter().map(|s| s.as_str()).collect();
+                        processed = rustfetch_core::apply_neofetch_colors(&processed, &refs);
+                    }
+                    let lines: Vec<String> = processed.lines().map(|s| s.to_string()).collect();
                     let w = lines
                         .iter()
                         .map(|l| layout::strip_ansi_width(l))
@@ -366,6 +459,15 @@ fn run_once(
 
     if let Some(c) = &cli.color {
         dynamic_color = Some(c.clone());
+    } else if dynamic_color.is_none() {
+        if let Some(t_name) = &config.general.theme {
+            if let Some(t) = rustfetch_render::get_theme(t_name) {
+                dynamic_color = Some(format!(
+                    "#{:02x}{:02x}{:02x}",
+                    t.primary.0, t.primary.1, t.primary.2
+                ));
+            }
+        }
     }
 
     let header_color = dynamic_color.as_deref().or(distro_color);
@@ -374,6 +476,20 @@ fn run_once(
 
     let header = build_header();
 
+    let border_image_path = cli
+        .border_image
+        .as_deref()
+        .or(config.general.border_image.as_deref())
+        .map(|p| shellexpand::tilde(p).to_string());
+    let border_image_width = cli
+        .border_image_width
+        .or(config.general.border_image_width)
+        .unwrap_or(24);
+
+    let border_image_lines = border_image_path
+        .as_deref()
+        .and_then(|p| rustfetch_render::render_halfblock(p, border_image_width));
+
     let render_opts = layout::RenderOptions {
         header: header.as_deref(),
         header_color,
@@ -381,16 +497,51 @@ fn run_once(
         padding: config.general.padding,
         center: config.general.center,
         border: config.general.border,
+        border_style: config.general.border_style.as_deref(),
+        border_color: config.general.border_color.as_deref(),
+        border_chars: config.general.border_chars.as_ref(),
+        border_title: config.general.border_title.as_deref(),
+        box_padding: config.general.box_padding,
         palette_lines: palette_lines.as_deref(),
+        palette_position: &config.general.colors.position,
+        icon_only: config.general.icon_only,
+        key_type: config.general.key_type.as_deref(),
+        border_image: border_image_lines.as_deref(),
     };
 
     if show_logo {
         if let Some(image_path) = &resolved_image_path {
-            let mut target_cols = config.general.logo.image_width_cols;
+            let mut target_cols = cli.width.unwrap_or(config.general.logo.image_width_cols);
+
+            let term_cols = layout::terminal_width();
+            let right_preview = layout::format_info_lines(
+                &info_lines,
+                &config.general.separator,
+                config.general.icon_only,
+                config.general.key_type.as_deref(),
+            );
+            let max_right_w = right_preview
+                .iter()
+                .map(|l| layout::strip_ansi_width(l))
+                .max()
+                .unwrap_or(0);
+            let header_w = header
+                .as_ref()
+                .map(|h| unicode_width::UnicodeWidthStr::width(h.as_str()))
+                .unwrap_or(0);
+            let needed_right_w =
+                max_right_w.max(header_w) + if config.general.border { 4 } else { 0 };
+
+            if term_cols > needed_right_w + layout::LOGO_GAP + 10 {
+                let max_avail_image_cols = term_cols - needed_right_w - layout::LOGO_GAP - 2;
+                if target_cols > max_avail_image_cols {
+                    target_cols = max_avail_image_cols;
+                }
+            }
 
             if cli.live {
-                if let Ok((term_cols, _)) = crossterm::terminal::size() {
-                    let max_cols = (term_cols as usize) / 2;
+                if let Ok((cols, _)) = crossterm::terminal::size() {
+                    let max_cols = (cols as usize) / 2;
                     if target_cols > max_cols && max_cols > 5 {
                         target_cols = max_cols;
                     }
@@ -401,27 +552,7 @@ fn run_once(
             let use_kitty =
                 protocol == "kitty" || (protocol == "auto" && terminal_supports_kitty());
 
-            if !use_kitty {
-                if let Some(lines) = rustfetch_render::render_halfblock(image_path, target_cols) {
-                    let logo_block = LogoBlock {
-                        lines,
-                        width: target_cols,
-                    };
-                    layout::render(Some(&logo_block), &info_lines, &render_opts);
-                    return;
-                }
-            } else {
-                let right_preview =
-                    layout::format_info_lines(&info_lines, &config.general.separator);
-                let max_right_w = right_preview
-                    .iter()
-                    .map(|l| layout::strip_ansi_width(l))
-                    .max()
-                    .unwrap_or(0);
-                let header_w = header
-                    .as_ref()
-                    .map(|h| unicode_width::UnicodeWidthStr::width(h.as_str()))
-                    .unwrap_or(0);
+            if use_kitty {
                 let total_fetch_w = target_cols + layout::LOGO_GAP + max_right_w.max(header_w);
                 let h_pad = layout::compute_h_pad(
                     total_fetch_w,
@@ -444,15 +575,15 @@ fn run_once(
                     );
                     return;
                 }
+            }
 
-                if let Some(lines) = rustfetch_render::render_halfblock(image_path, target_cols) {
-                    let logo_block = LogoBlock {
-                        lines,
-                        width: target_cols,
-                    };
-                    layout::render(Some(&logo_block), &info_lines, &render_opts);
-                    return;
-                }
+            if let Some(lines) = rustfetch_render::render_halfblock(image_path, target_cols) {
+                let logo_block = LogoBlock {
+                    lines,
+                    width: target_cols,
+                };
+                layout::render(Some(&logo_block), &info_lines, &render_opts);
+                return;
             }
         }
     }
@@ -497,9 +628,13 @@ fn run_json(
         }
 
         let icon = if config.general.icons {
-            mc.icon
-                .clone()
-                .or_else(|| default_icon_for_module(&mc.name).map(str::to_string))
+            if let Some(user_icon) = &mc.icon {
+                Some(user_icon.clone())
+            } else if mc.name == "os" {
+                Some(rustfetch_core::distro_icon(&value).to_string())
+            } else {
+                default_icon_for_module(&mc.name).map(str::to_string)
+            }
         } else {
             None
         };
@@ -602,18 +737,33 @@ fn gather_info_lines(
         .into_iter()
         .zip(configs.iter())
         .filter_map(|(result, mc)| {
+            let is_divider = mc.name == "break" || mc.name == "divider";
+            if is_divider {
+                let label = if let Some(lbl) = &mc.label {
+                    if !lbl.is_empty() {
+                        format!("---DIVIDER:{lbl}---")
+                    } else {
+                        "---DIVIDER---".to_string()
+                    }
+                } else {
+                    "---DIVIDER---".to_string()
+                };
+                return Some(InfoLine {
+                    label,
+                    value: String::new(),
+                    icon: None,
+                    color: String::new(),
+                });
+            }
+
             let info = result?;
-            let label = if mc.name == "break" {
-                String::new()
-            } else if mc.name == "custom" {
+            let label = if mc.name == "custom" {
                 mc.label.clone().unwrap_or_default()
             } else {
                 mc.label.clone().unwrap_or(info.label)
             };
 
-            let mut value = if mc.name == "break" {
-                String::new()
-            } else if mc.name == "custom" {
+            let mut value = if mc.name == "custom" {
                 mc.value.clone().unwrap_or_default()
             } else {
                 info.value
@@ -623,10 +773,14 @@ fn gather_info_lines(
                 value = fmt.replace("{value}", &value).replace("{}", &value);
             }
 
-            let icon = if config.general.icons && mc.name != "break" {
-                mc.icon
-                    .clone()
-                    .or_else(|| default_icon_for_module(&mc.name).map(str::to_string))
+            let icon = if config.general.icons {
+                if let Some(user_icon) = &mc.icon {
+                    Some(user_icon.clone())
+                } else if mc.name == "os" {
+                    Some(rustfetch_core::distro_icon(&value).to_string())
+                } else {
+                    default_icon_for_module(&mc.name).map(str::to_string)
+                }
             } else {
                 None
             };
@@ -648,7 +802,16 @@ fn gather_info_lines(
                 }
             }
 
-            let color_str = dynamic_color.or(mc.color.as_deref()).unwrap_or("blue");
+            let theme_color = config
+                .general
+                .theme
+                .as_deref()
+                .and_then(rustfetch_render::get_theme)
+                .map(|t| format!("#{:02x}{:02x}{:02x}", t.primary.0, t.primary.1, t.primary.2));
+            let color_str = dynamic_color
+                .or(mc.color.as_deref())
+                .or(theme_color.as_deref())
+                .unwrap_or("blue");
             let color = color_code(color_str);
             Some(InfoLine {
                 label,
@@ -822,7 +985,16 @@ fn run_3d(
         padding: config.general.padding,
         center: config.general.center,
         border: config.general.border,
+        border_style: config.general.border_style.as_deref(),
+        border_color: config.general.border_color.as_deref(),
+        border_chars: config.general.border_chars.as_ref(),
+        border_title: config.general.border_title.as_deref(),
+        box_padding: config.general.box_padding,
         palette_lines: palette_lines.as_deref(),
+        palette_position: &config.general.colors.position,
+        icon_only: config.general.icon_only,
+        key_type: config.general.key_type.as_deref(),
+        border_image: None,
     };
 
     let mut info_lines = gather_info_lines(config, modules, configs, None);
@@ -1169,7 +1341,16 @@ fn run_ascii_animation(
         padding: config.general.padding,
         center: config.general.center,
         border: config.general.border,
+        border_style: config.general.border_style.as_deref(),
+        border_color: config.general.border_color.as_deref(),
+        border_chars: config.general.border_chars.as_ref(),
+        border_title: config.general.border_title.as_deref(),
+        box_padding: config.general.box_padding,
         palette_lines: palette_lines.as_deref(),
+        palette_position: &config.general.colors.position,
+        icon_only: config.general.icon_only,
+        key_type: config.general.key_type.as_deref(),
+        border_image: None,
     };
 
     let mut info_lines = gather_info_lines(config, modules, configs, None);

@@ -15,6 +15,10 @@ pub struct ColorsConfig {
     pub symbol: String,
     pub block: bool,
     pub image_palette: bool,
+    pub position: String,
+    pub rows: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub custom: Option<Vec<String>>,
 }
 
 impl Default for ColorsConfig {
@@ -24,6 +28,150 @@ impl Default for ColorsConfig {
             symbol: "●".to_string(),
             block: false,
             image_palette: true,
+            position: "bottom".to_string(),
+            rows: 1,
+            custom: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(default)]
+pub struct BorderCharsConfig {
+    pub top_left: String,
+    pub top: String,
+    pub top_right: String,
+    pub right: String,
+    pub bottom_right: String,
+    pub bottom: String,
+    pub bottom_left: String,
+    pub left: String,
+    pub divider_left: String,
+    pub divider: String,
+    pub divider_right: String,
+}
+
+impl Default for BorderCharsConfig {
+    fn default() -> Self {
+        Self::from_style("rounded")
+    }
+}
+
+impl BorderCharsConfig {
+    pub fn from_style(style: &str) -> Self {
+        match style.to_lowercase().as_str() {
+            "single" => Self {
+                top_left: "┌".to_string(),
+                top: "─".to_string(),
+                top_right: "┐".to_string(),
+                right: "│".to_string(),
+                bottom_right: "┘".to_string(),
+                bottom: "─".to_string(),
+                bottom_left: "└".to_string(),
+                left: "│".to_string(),
+                divider_left: "├".to_string(),
+                divider: "─".to_string(),
+                divider_right: "┤".to_string(),
+            },
+            "double" => Self {
+                top_left: "╔".to_string(),
+                top: "═".to_string(),
+                top_right: "╗".to_string(),
+                right: "║".to_string(),
+                bottom_right: "╝".to_string(),
+                bottom: "═".to_string(),
+                bottom_left: "╚".to_string(),
+                left: "║".to_string(),
+                divider_left: "╠".to_string(),
+                divider: "═".to_string(),
+                divider_right: "╣".to_string(),
+            },
+            "thick" | "heavy" => Self {
+                top_left: "┏".to_string(),
+                top: "━".to_string(),
+                top_right: "┓".to_string(),
+                right: "┃".to_string(),
+                bottom_right: "┛".to_string(),
+                bottom: "━".to_string(),
+                bottom_left: "┗".to_string(),
+                left: "┃".to_string(),
+                divider_left: "┣".to_string(),
+                divider: "━".to_string(),
+                divider_right: "┫".to_string(),
+            },
+            "dashed" => Self {
+                top_left: "┌".to_string(),
+                top: "╌".to_string(),
+                top_right: "┐".to_string(),
+                right: "┆".to_string(),
+                bottom_right: "┘".to_string(),
+                bottom: "╌".to_string(),
+                bottom_left: "└".to_string(),
+                left: "┆".to_string(),
+                divider_left: "├".to_string(),
+                divider: "╌".to_string(),
+                divider_right: "┤".to_string(),
+            },
+            "brackets" => Self {
+                top_left: "[".to_string(),
+                top: "─".to_string(),
+                top_right: "]".to_string(),
+                right: "│".to_string(),
+                bottom_right: "]".to_string(),
+                bottom: "─".to_string(),
+                bottom_left: "[".to_string(),
+                left: "│".to_string(),
+                divider_left: "[".to_string(),
+                divider: "─".to_string(),
+                divider_right: "]".to_string(),
+            },
+            "ascii" => Self {
+                top_left: "+".to_string(),
+                top: "-".to_string(),
+                top_right: "+".to_string(),
+                right: "|".to_string(),
+                bottom_right: "+".to_string(),
+                bottom: "-".to_string(),
+                bottom_left: "+".to_string(),
+                left: "|".to_string(),
+                divider_left: "+".to_string(),
+                divider: "-".to_string(),
+                divider_right: "+".to_string(),
+            },
+            _ => Self {
+                top_left: "╭".to_string(),
+                top: "─".to_string(),
+                top_right: "╮".to_string(),
+                right: "│".to_string(),
+                bottom_right: "╯".to_string(),
+                bottom: "─".to_string(),
+                bottom_left: "╰".to_string(),
+                left: "│".to_string(),
+                divider_left: "├".to_string(),
+                divider: "─".to_string(),
+                divider_right: "┤".to_string(),
+            },
+        }
+    }
+
+    pub fn from_str_compact(s: &str) -> Option<Self> {
+        let chars: Vec<char> = s.chars().collect();
+        if chars.len() >= 11 {
+            Some(Self {
+                top_left: chars[0].to_string(),
+                top: chars[1].to_string(),
+                top_right: chars[2].to_string(),
+                right: chars[3].to_string(),
+                bottom_right: chars[4].to_string(),
+                bottom: chars[5].to_string(),
+                bottom_left: chars[6].to_string(),
+                left: chars[7].to_string(),
+                divider_left: chars[8].to_string(),
+                divider: chars[9].to_string(),
+                divider_right: chars[10].to_string(),
+            })
+        } else {
+            None
         }
     }
 }
@@ -108,7 +256,27 @@ pub struct GeneralConfig {
     pub padding: usize,
     pub center: bool,
     pub icons: bool,
+    pub icon_only: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub key_type: Option<String>,
     pub border: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub border_style: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub border_color: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub border_chars: Option<BorderCharsConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub border_title: Option<String>,
+    pub box_padding: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub border_image: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub border_image_width: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gradient: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub theme: Option<String>,
     pub colors: ColorsConfig,
     pub logo: LogoConfig,
     #[serde(alias = "3d", default)]
@@ -149,6 +317,8 @@ pub struct LogoConfig {
     pub distro: String,
     #[serde(skip_serializing_if = "Option::is_none", alias = "ascii")]
     pub ascii_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub colors: Option<Vec<String>>,
     pub image_path: Option<String>,
     pub image_width_cols: usize,
     pub image_dir: Option<String>,
@@ -197,6 +367,7 @@ impl Default for LogoConfig {
             enabled: true,
             distro: "auto".to_string(),
             ascii_path: None,
+            colors: None,
             image_path: None,
             image_width_cols: 42,
             image_dir: None,
@@ -216,7 +387,18 @@ impl Default for GeneralConfig {
             padding: 1,
             center: false,
             icons: true,
+            icon_only: false,
+            key_type: None,
             border: false,
+            border_style: None,
+            border_color: None,
+            border_chars: None,
+            border_title: None,
+            box_padding: 1,
+            border_image: None,
+            border_image_width: None,
+            gradient: None,
+            theme: None,
             colors: ColorsConfig::default(),
             logo: LogoConfig::default(),
             three_d: None,
@@ -298,35 +480,82 @@ pub fn make_progress_bar(percent: u8, width: usize, colored: bool) -> String {
 
 pub fn default_icon_for_module(name: &str) -> Option<&'static str> {
     match name {
-        "os" => Some(""),
-        "host" => Some(""),
-        "board" => Some(""),
-        "kernel" => Some(""),
-        "uptime" => Some(""),
-        "packages" => Some(""),
-        "shell" => Some(""),
-        "desktop" => Some(""),
-        "font" => Some(""),
-        "terminal" => Some(""),
-        "cpu" => Some(""),
-        "gpu" => Some("󰾲"),
-        "memory" => Some(""),
+        "os" => Some("󰌽"),
+        "host" => Some("󰌢"),
+        "board" => Some("󰘚"),
+        "kernel" => Some("󰒋"),
+        "uptime" => Some("󱑂"),
+        "packages" => Some("󰏖"),
+        "shell" => Some("󰞷"),
+        "desktop" => Some("󰨇"),
+        "font" => Some("󰛖"),
+        "terminal" => Some("󰆍"),
+        "cpu" => Some("󰍛"),
+        "gpu" => Some("󰢮"),
+        "memory" => Some("󰘚"),
         "swap" => Some("󰓡"),
-        "disk" => Some(""),
-        "battery" => Some(""),
+        "disk" => Some("󰋊"),
+        "battery" => Some("󰂁"),
         "brightness" => Some("󰃠"),
         "cpu_usage" => Some("󰓅"),
         "bluetooth" => Some("󰂯"),
-        "local_ip" => Some(""),
-        "locale" => Some(""),
-        "temp" => Some(""),
-        "sound" => Some(""),
+        "local_ip" => Some("󰩟"),
+        "locale" => Some("󰗊"),
+        "temp" => Some("󰔏"),
+        "sound" => Some("󰕾"),
         "media" => Some("󰝚"),
         "display" => Some("󰍹"),
         "wifi" => Some("󰖩"),
-        "processes" => Some(""),
-        "custom" => Some(""),
+        "processes" => Some("󰒋"),
+        "custom" => Some("󰅐"),
         _ => None,
+    }
+}
+
+pub fn distro_icon(distro_name: &str) -> &'static str {
+    let lower = distro_name.to_lowercase();
+    if lower.contains("arch") {
+        "󰣇"
+    } else if lower.contains("ubuntu") {
+        "󰕈"
+    } else if lower.contains("fedora") {
+        "󰣛"
+    } else if lower.contains("debian") {
+        "󰣚"
+    } else if lower.contains("nixos") {
+        "󱄅"
+    } else if lower.contains("gentoo") {
+        "󰣨"
+    } else if lower.contains("manjaro") {
+        "󱘊"
+    } else if lower.contains("mint") {
+        "󰣭"
+    } else if lower.contains("alpine") {
+        "󰣠"
+    } else if lower.contains("suse") {
+        "󰣡"
+    } else if lower.contains("kali") {
+        "󰣳"
+    } else if lower.contains("pop") {
+        "󰣩"
+    } else if lower.contains("endeavour") {
+        "󰣫"
+    } else if lower.contains("artix") {
+        "󰣢"
+    } else if lower.contains("void") {
+        "󰣲"
+    } else if lower.contains("cachy") {
+        "󰣇"
+    } else if lower.contains("darwin") || lower.contains("macos") || lower.contains("apple") {
+        "󰀵"
+    } else if lower.contains("windows") {
+        "󰍲"
+    } else if lower.contains("android") {
+        "󰀲"
+    } else if lower.contains("freebsd") || lower.contains("bsd") {
+        "󰣶"
+    } else {
+        "󰌽"
     }
 }
 
@@ -378,11 +607,99 @@ impl Config {
                 ];
                 Some(c)
             }
-            "card" => {
+            "clean" => {
+                let mut c = Config::default();
+                c.general.icon_only = true;
+                c.general.separator = "".to_string();
+                c.general.padding = 1;
+                c.general.colors.enabled = false;
+                c.modules = vec![
+                    ModuleConfig::new("os"),
+                    ModuleConfig::new("kernel"),
+                    ModuleConfig::new("desktop"),
+                    ModuleConfig::new("shell"),
+                    ModuleConfig::new("terminal"),
+                    ModuleConfig::new("cpu"),
+                    ModuleConfig::new("gpu"),
+                    ModuleConfig::new("memory"),
+                    ModuleConfig::new("uptime"),
+                ];
+                Some(c)
+            }
+            "dots" => {
+                let mut c = Config::default();
+                c.general.icon_only = true;
+                c.general.separator = "•".to_string();
+                c.general.padding = 1;
+                c.general.colors.enabled = true;
+                c.general.colors.symbol = "●".to_string();
+                c.modules = vec![
+                    ModuleConfig::new("os"),
+                    ModuleConfig::new("kernel"),
+                    ModuleConfig::new("uptime"),
+                    ModuleConfig::new("shell"),
+                    ModuleConfig::new("terminal"),
+                    ModuleConfig::new("cpu"),
+                    ModuleConfig::new("gpu"),
+                    ModuleConfig::new("memory"),
+                    ModuleConfig::new("disk"),
+                ];
+                Some(c)
+            }
+            "card" | "modern-card" => {
                 let mut c = Config::default();
                 c.general.border = true;
+                c.general.border_style = Some("rounded".to_string());
                 c.general.padding = 2;
                 c.general.center = true;
+                c.general.colors.enabled = true;
+                c.general.colors.position = "bottom".to_string();
+                c.modules = vec![
+                    ModuleConfig::new("os"),
+                    ModuleConfig::new("host"),
+                    ModuleConfig::new("kernel"),
+                    ModuleConfig::new("uptime"),
+                    ModuleConfig::new("break"),
+                    ModuleConfig::new("shell"),
+                    ModuleConfig::new("terminal"),
+                    ModuleConfig::new("desktop"),
+                    ModuleConfig::new("break"),
+                    ModuleConfig::new("cpu"),
+                    ModuleConfig::new("gpu"),
+                    ModuleConfig::new("memory"),
+                    ModuleConfig::new("disk"),
+                ];
+                Some(c)
+            }
+            "brackets" => {
+                let mut c = Config::default();
+                c.general.border = true;
+                c.general.border_style = Some("brackets".to_string());
+                c.general.padding = 2;
+                c.general.center = true;
+                Some(c)
+            }
+            "neofetch" => {
+                let mut c = Config::default();
+                c.general.separator = ":".to_string();
+                c.general.padding = 1;
+                c.general.colors.enabled = true;
+                c.general.colors.block = true;
+                c.general.colors.rows = 2;
+                c.general.colors.position = "bottom".to_string();
+                Some(c)
+            }
+            "retro" => {
+                let mut c = Config::default();
+                c.general.border = true;
+                c.general.border_style = Some("rounded".to_string());
+                c.general.colors.symbol = "󰮯".to_string();
+                for m in &mut c.modules {
+                    if matches!(m.name.as_str(), "memory" | "disk" | "battery") {
+                        m.bar = Some(true);
+                        m.bar_width = Some(10);
+                    }
+                }
                 Some(c)
             }
             "modern" => {

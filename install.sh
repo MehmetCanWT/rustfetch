@@ -22,6 +22,11 @@ NC='\033[0m'
 
 echo -e "${BLUE}==>${NC} Installing ${GREEN}RustFetch${NC}..."
 
+# 0. Ensure Cargo environment is loaded if available
+if ! command -v cargo &>/dev/null && [ -f "$HOME/.cargo/env" ]; then
+    . "$HOME/.cargo/env"
+fi
+
 # 1. Detect OS and Architecture
 OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
 ARCH="$(uname -m)"
@@ -70,7 +75,16 @@ elif [ -n "$TARGET_ARCH" ] && [ -z "$RUSTFETCH_BUILD_FROM_SOURCE" ]; then
     TARBALL_URL="${GITHUB_URL}/releases/latest/download/rustfetch-${RELEASE_TARGET}.tar.gz"
     echo -e "${BLUE}==>${NC} Checking for pre-compiled binary for ${RELEASE_TARGET}..."
 
-    if curl -sSfL "$TARBALL_URL" -o "$TEMP_DIR/rustfetch.tar.gz" 2>/dev/null; then
+    if ! curl -sSfL "$TARBALL_URL" -o "$TEMP_DIR/rustfetch.tar.gz" 2>/dev/null; then
+        # Check GitHub API for version-tagged release archives (e.g., rustfetch-v0.1.0-x86_64-unknown-linux-gnu.tar.gz)
+        API_URL="https://api.github.com/repos/${REPO}/releases/latest"
+        TAGGED_URL="$(curl -sSfL "$API_URL" 2>/dev/null | grep -o 'https://[^" ]*'"${RELEASE_TARGET}"'\.tar\.gz' | head -n 1 || true)"
+        if [ -n "$TAGGED_URL" ]; then
+            curl -sSfL "$TAGGED_URL" -o "$TEMP_DIR/rustfetch.tar.gz" 2>/dev/null || true
+        fi
+    fi
+
+    if [ -s "$TEMP_DIR/rustfetch.tar.gz" ]; then
         echo -e "${GREEN}==>${NC} Downloaded pre-compiled release binary successfully."
         tar -xzf "$TEMP_DIR/rustfetch.tar.gz" -C "$TEMP_DIR"
         BIN_FOUND="$(find "$TEMP_DIR" -type f -name rustfetch -perm -111 | head -n 1)"
@@ -146,8 +160,18 @@ fi
 
 mkdir -p "$FINAL_BIN_DIR"
 cp -f "$BINARY_PATH" "$FINAL_BIN_DIR/rustfetch"
-ln -sf "$FINAL_BIN_DIR/rustfetch" "$FINAL_BIN_DIR/rfetch"
 chmod +x "$FINAL_BIN_DIR/rustfetch"
+
+# Install rfetch binary (prefer compiled binary if present, fallback to symlink)
+if [ -f "$BUILD_DIR/target/release/rfetch" ]; then
+    cp -f "$BUILD_DIR/target/release/rfetch" "$FINAL_BIN_DIR/rfetch"
+    chmod +x "$FINAL_BIN_DIR/rfetch"
+elif [ -f "$BUILD_DIR/rfetch" ]; then
+    cp -f "$BUILD_DIR/rfetch" "$FINAL_BIN_DIR/rfetch"
+    chmod +x "$FINAL_BIN_DIR/rfetch"
+else
+    ln -sf "$FINAL_BIN_DIR/rustfetch" "$FINAL_BIN_DIR/rfetch"
+fi
 
 # 6. Create config directory
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/rustfetch"
@@ -161,19 +185,19 @@ if [ -x "$INSTALLED_BIN" ]; then
     BASH_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions"
     mkdir -p "$BASH_DIR"
     "$INSTALLED_BIN" --completions bash > "$BASH_DIR/rustfetch" 2>/dev/null || true
-    ln -sf "$BASH_DIR/rustfetch" "$BASH_DIR/rfetch" 2>/dev/null || true
+    sed 's/rustfetch/rfetch/g' "$BASH_DIR/rustfetch" > "$BASH_DIR/rfetch" 2>/dev/null || ln -sf "$BASH_DIR/rustfetch" "$BASH_DIR/rfetch" 2>/dev/null || true
 
     # Zsh
     ZSH_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/zsh/site-functions"
     mkdir -p "$ZSH_DIR"
     "$INSTALLED_BIN" --completions zsh > "$ZSH_DIR/_rustfetch" 2>/dev/null || true
-    ln -sf "$ZSH_DIR/_rustfetch" "$ZSH_DIR/_rfetch" 2>/dev/null || true
+    sed 's/rustfetch/rfetch/g' "$ZSH_DIR/_rustfetch" > "$ZSH_DIR/_rfetch" 2>/dev/null || ln -sf "$ZSH_DIR/_rustfetch" "$ZSH_DIR/_rfetch" 2>/dev/null || true
 
     # Fish
     FISH_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/fish/completions"
     mkdir -p "$FISH_DIR"
     "$INSTALLED_BIN" --completions fish > "$FISH_DIR/rustfetch.fish" 2>/dev/null || true
-    ln -sf "$FISH_DIR/rustfetch.fish" "$FISH_DIR/rfetch.fish" 2>/dev/null || true
+    sed 's/complete -c rustfetch/complete -c rfetch/g' "$FISH_DIR/rustfetch.fish" > "$FISH_DIR/rfetch.fish" 2>/dev/null || ln -sf "$FISH_DIR/rustfetch.fish" "$FISH_DIR/rfetch.fish" 2>/dev/null || true
 fi
 
 # 8. Install man pages
@@ -208,7 +232,14 @@ echo -e "  ${GREEN}1)${NC} Standard 2D   — Classic fastfetch-style static ASCI
 echo -e "  ${GREEN}2)${NC} 3D Animated   — Real-time spinning 3D ASCII relief logo (can also run anytime with 'rfetch --3d')"
 
 MODE_CHOICE="2d"
-if [ -t 0 ] || [ -c /dev/tty ]; then
+if [ -n "$RUSTFETCH_MODE" ]; then
+    case "$RUSTFETCH_MODE" in
+        2|"3d"|"animated"|"three_d") MODE_CHOICE="3d" ;;
+        *) MODE_CHOICE="2d" ;;
+    esac
+elif [ "$CI" = "1" ] || [ "$NONINTERACTIVE" = "1" ] || [ "$DEBIAN_FRONTEND" = "noninteractive" ]; then
+    MODE_CHOICE="2d"
+elif [ -t 0 ] || [ -c /dev/tty ]; then
     read -rp "Select mode [1-2] (default: 1): " USER_INPUT </dev/tty 2>/dev/null || USER_INPUT="1"
     case "$USER_INPUT" in
         2|"3d"|"animated"|"three_d")

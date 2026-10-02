@@ -17,6 +17,7 @@ This directory contains comprehensive, modular technical guides detailing every 
 | [**05. Images & Terminal Graphics Protocols**](05-images-and-protocols.md) | Kitty graphics protocol, Sixel, iTerm2, ANSI TrueColor half-blocks, wallpaper galleries, and auto-color. |
 | [**06. 3D Terminal Graphics Engine**](06-3d-terminal-engine.md) | Real-time 3D ASCII mesh extrusion, relief heightmaps, Lambertian diffuse & Blinn-Phong specular lighting. |
 | [**07. ASCII Animations & GIF Frame Player**](07-ascii-animations-gifs.md) | Multi-frame ASCII playback, converting GIFs to ASCII, zero-flicker double-buffered rendering, and `exit_on_key`. |
+| [**--. ASCII Animation Deep Dive & Specs**](ascii-anim.md) | Technical specs for delimiter formats, POSIX `ioctl(FIONREAD)` non-blocking shell handoff, and bundled assets. |
 | [**08. Telemetry Modules & Nerd Font v3 Icons**](08-modules-and-icons.md) | All 28+ hardware & OS modules, Nerd Font v3 Material Design symbols, distro-aware glyphs, and progress bars. |
 | [**09. Layout Presets Showcase**](09-presets-showcase.md) | Built-in presets (`card`, `dots`, `clean`, `neofetch`, `brackets`, `retro`, `minimal`, `modern`, `compact`). |
 

@@ -246,7 +246,7 @@ rustfetch --3d --frames 100
 
 ## 🎬 Custom ASCII Art & Frame Animations (`--ascii` / `--ascii-anim`)
 
-> 📖 **Full Guide & Formatting:** Check out **[docs/07-ascii-animations-gifs.md](docs/07-ascii-animations-gifs.md)** and **[ascii-anim.md](ascii-anim.md)** for a complete walkthrough on creating custom multi-frame animations, delimiter syntax, and directory setups.
+> 📖 **Full Guide & Formatting:** Check out **[docs/07-ascii-animations-gifs.md](docs/07-ascii-animations-gifs.md)** and **[docs/ascii-anim.md](docs/ascii-anim.md)** for a complete walkthrough on creating custom multi-frame animations, delimiter syntax, and directory setups.
 
 - **Custom Static ASCII (`--ascii <PATH>`):** Use your own custom ASCII text file in 2D or extrude it into an interactive 3D model with `--3d` (`rfetch --ascii my_logo.txt --3d`).
 - **Multi-Frame ASCII Animations (`--ascii-anim <PATH>`):** Play continuous frame-by-frame ASCII animations from a single file (separated by `===FRAME===` / `---`) or a directory of frames (`01.txt`, `02.txt`).

@@ -57,6 +57,8 @@ jobs:
           cp README.md MODULES.md LICENSE install.sh "$ARCHIVE_NAME/"
           tar -czvf "${ARCHIVE_NAME}.tar.gz" "$ARCHIVE_NAME"
           sha256sum "${ARCHIVE_NAME}.tar.gz" > "${ARCHIVE_NAME}.tar.gz.sha256"
+          cp "${ARCHIVE_NAME}.tar.gz" "rustfetch-${{ matrix.target }}.tar.gz"
+          cp "${ARCHIVE_NAME}.tar.gz.sha256" "rustfetch-${{ matrix.target }}.tar.gz.sha256"
 
       - name: Upload Release Artifacts
         uses: softprops/action-gh-release@v2

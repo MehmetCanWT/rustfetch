@@ -33,18 +33,10 @@ impl Module for PackagesModule {
         if std::path::Path::new("/var/lib/rpm").exists()
             || std::path::Path::new("/usr/bin/rpm").exists()
         {
-            if let Ok(output) = Command::new("sh")
-                .arg("-c")
-                .arg("rpm -qa 2>/dev/null | wc -l")
-                .output()
-            {
-                if let Ok(count) = String::from_utf8_lossy(&output.stdout)
-                    .trim()
-                    .parse::<u32>()
-                {
-                    if count > 0 {
-                        packages.push(format!("{count} (rpm)"));
-                    }
+            if let Ok(output) = Command::new("rpm").arg("-qa").output() {
+                let count = count_nonempty_lines(&String::from_utf8_lossy(&output.stdout));
+                if output.status.success() && count > 0 {
+                    packages.push(format!("{count} (rpm)"));
                 }
             }
         }
@@ -135,6 +127,13 @@ pub fn count_xbps_packages(content: &str) -> usize {
     content.matches("<key>pkgver</key>").count()
 }
 
+pub fn count_nonempty_lines(content: &str) -> usize {
+    content
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .count()
+}
+
 pub fn count_nix_packages() -> usize {
     let mut count = 0;
     if let Ok(entries) = fs::read_dir("/run/current-system/sw/bin") {
@@ -176,5 +175,10 @@ mod tests {
     #[test]
     fn test_packages_module_name() {
         assert_eq!(PackagesModule.name(), "packages");
+    }
+
+    #[test]
+    fn test_count_nonempty_lines() {
+        assert_eq!(count_nonempty_lines("package-a\n\n package-b \n"), 2);
     }
 }

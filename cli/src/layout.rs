@@ -236,6 +236,7 @@ pub struct RenderOptions<'a> {
     pub icon_only: bool,
     pub key_type: Option<&'a str>,
     pub border_image: Option<&'a [String]>,
+    pub border_image_position: &'a str,
 }
 
 #[allow(dead_code)]
@@ -412,24 +413,96 @@ pub fn build_right_lines(info_lines: &[InfoLine], opts: &RenderOptions) -> Vec<S
     }
 
     if let Some(border_img) = opts.border_image.filter(|b| !b.is_empty()) {
-        let border_w = border_img
-            .iter()
-            .map(|l| strip_ansi_width(l))
-            .max()
-            .unwrap_or(0);
-        let total_rows = border_img.len().max(right_lines.len());
-        let mut combined = Vec::with_capacity(total_rows);
-        for i in 0..total_rows {
-            let b_str = border_img.get(i).map(|s| s.as_str()).unwrap_or("");
-            let b_visual_w = strip_ansi_width(b_str);
-            let b_pad = " ".repeat(border_w.saturating_sub(b_visual_w));
-            let r_str = right_lines.get(i).map(|s| s.as_str()).unwrap_or("");
-            combined.push(format!("{b_str}{b_pad}   {r_str}"));
-        }
-        return combined;
+        return compose_with_border_image(&right_lines, border_img, opts.border_image_position);
     }
 
     right_lines
+}
+
+/// Places a rasterized decoration around the telemetry card. `left` preserves
+/// the original layout; `right`, `top`, `bottom`, and `frame` support the
+/// common ricing compositions without requiring duplicate image files.
+pub fn compose_with_border_image(
+    content: &[String],
+    border_image: &[String],
+    position: &str,
+) -> Vec<String> {
+    match position.to_ascii_lowercase().as_str() {
+        "top" => {
+            let mut combined = Vec::with_capacity(border_image.len() + content.len());
+            combined.extend(border_image.iter().cloned());
+            combined.extend(content.iter().cloned());
+            combined
+        }
+        "bottom" => {
+            let mut combined = Vec::with_capacity(border_image.len() + content.len());
+            combined.extend(content.iter().cloned());
+            combined.extend(border_image.iter().cloned());
+            combined
+        }
+        "right" => compose_image_columns(content, border_image, false),
+        "frame" | "both" => compose_image_frame(content, border_image),
+        "left" => compose_image_columns(content, border_image, true),
+        _ => compose_image_columns(content, border_image, true),
+    }
+}
+
+fn compose_image_columns(
+    content: &[String],
+    border_image: &[String],
+    image_on_left: bool,
+) -> Vec<String> {
+    let image_width = border_image
+        .iter()
+        .map(|line| strip_ansi_width(line))
+        .max()
+        .unwrap_or(0);
+    let content_width = content
+        .iter()
+        .map(|line| strip_ansi_width(line))
+        .max()
+        .unwrap_or(0);
+    let total_rows = border_image.len().max(content.len());
+    let mut combined = Vec::with_capacity(total_rows);
+
+    for index in 0..total_rows {
+        let image = border_image.get(index).map(String::as_str).unwrap_or("");
+        let content_line = content.get(index).map(String::as_str).unwrap_or("");
+        let image_pad = " ".repeat(image_width.saturating_sub(strip_ansi_width(image)));
+        let content_pad = " ".repeat(content_width.saturating_sub(strip_ansi_width(content_line)));
+        if image_on_left {
+            combined.push(format!("{image}{image_pad}   {content_line}"));
+        } else {
+            combined.push(format!("{content_line}{content_pad}   {image}"));
+        }
+    }
+    combined
+}
+
+fn compose_image_frame(content: &[String], border_image: &[String]) -> Vec<String> {
+    let image_width = border_image
+        .iter()
+        .map(|line| strip_ansi_width(line))
+        .max()
+        .unwrap_or(0);
+    let content_width = content
+        .iter()
+        .map(|line| strip_ansi_width(line))
+        .max()
+        .unwrap_or(0);
+    let total_rows = border_image.len().max(content.len());
+    let mut combined = Vec::with_capacity(total_rows);
+
+    for index in 0..total_rows {
+        let image = border_image.get(index).map(String::as_str).unwrap_or("");
+        let content_line = content.get(index).map(String::as_str).unwrap_or("");
+        let image_pad = " ".repeat(image_width.saturating_sub(strip_ansi_width(image)));
+        let content_pad = " ".repeat(content_width.saturating_sub(strip_ansi_width(content_line)));
+        combined.push(format!(
+            "{image}{image_pad}   {content_line}{content_pad}   {image}"
+        ));
+    }
+    combined
 }
 
 pub fn render(logo: Option<&LogoBlock>, info_lines: &[InfoLine], opts: &RenderOptions) {
@@ -868,6 +941,7 @@ mod tests {
             icon_only: false,
             key_type: None,
             border_image: None,
+            border_image_position: "left",
         };
         let lines = build_right_lines(&info, &opts);
         assert_eq!(lines.len(), 3);
@@ -902,6 +976,7 @@ mod tests {
             icon_only: false,
             key_type: None,
             border_image: Some(&border_lines),
+            border_image_position: "left",
         };
         let lines = build_right_lines(&info, &opts);
         assert_eq!(lines.len(), 2);
@@ -910,5 +985,29 @@ mod tests {
         assert!(clean0.contains("OS"));
         assert!(clean0.contains("Linux"));
         assert!(lines[1].starts_with("[IMG_BOT]"));
+    }
+
+    #[test]
+    fn test_compose_with_border_image_positions() {
+        let content = vec!["CPU: 8 cores".to_string(), "RAM: 16 GiB".to_string()];
+        let image = vec!["<top>".to_string(), "<bottom>".to_string()];
+
+        let left = compose_with_border_image(&content, &image, "left");
+        assert!(left[0].starts_with("<top>"));
+        assert!(left[0].contains("CPU: 8 cores"));
+
+        let right = compose_with_border_image(&content, &image, "right");
+        assert!(right[0].starts_with("CPU: 8 cores"));
+        assert!(right[0].ends_with("<top>"));
+
+        let frame = compose_with_border_image(&content, &image, "frame");
+        assert!(frame[0].starts_with("<top>"));
+        assert!(frame[0].ends_with("<top>"));
+
+        let top = compose_with_border_image(&content, &image, "top");
+        assert_eq!(top, ["<top>", "<bottom>", "CPU: 8 cores", "RAM: 16 GiB"]);
+
+        let bottom = compose_with_border_image(&content, &image, "bottom");
+        assert_eq!(bottom, ["CPU: 8 cores", "RAM: 16 GiB", "<top>", "<bottom>"]);
     }
 }

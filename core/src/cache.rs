@@ -27,6 +27,38 @@ impl Cache {
     }
 
     pub fn write(&self, value: &str) {
-        let _ = fs::write(&self.dir, value);
+        // Write-then-rename prevents another RustFetch process from observing a
+        // partially written cache entry.
+        let temp_path = self
+            .dir
+            .with_extension(format!("{}.tmp", std::process::id()));
+        if fs::write(&temp_path, value).is_ok() && fs::rename(&temp_path, &self.dir).is_err() {
+            let _ = fs::remove_file(temp_path);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cache_write_replaces_the_previous_value() {
+        let root =
+            std::env::temp_dir().join(format!("rustfetch-cache-test-{}", std::process::id()));
+        let cache = Cache {
+            dir: root.join("packages"),
+        };
+        fs::create_dir_all(&root).unwrap();
+
+        cache.write("first");
+        cache.write("second");
+
+        assert_eq!(fs::read_to_string(&cache.dir).unwrap(), "second");
+        assert!(!cache
+            .dir
+            .with_extension(format!("{}.tmp", std::process::id()))
+            .exists());
+        fs::remove_dir_all(root).unwrap();
     }
 }

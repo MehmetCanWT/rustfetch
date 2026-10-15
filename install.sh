@@ -59,45 +59,13 @@ trap 'rm -rf "$TEMP_DIR"' EXIT
 
 INSTALLED_FROM_BINARY=false
 
-# 2. Check for local build first (if running inside repository)
+# 2. Compile binary
 if [ -f "Cargo.toml" ] && grep -q "rustfetch" Cargo.toml; then
     BUILD_DIR="$(pwd)"
     echo -e "${BLUE}==>${NC} Compiling local release binary (LTO optimized)..."
     cargo build --release -p rustfetch
-elif [ -n "$TARGET_ARCH" ] && [ -z "$RUSTFETCH_BUILD_FROM_SOURCE" ]; then
-    # Try downloading pre-compiled release binary from GitHub Releases (instant: <2s)
-    if [ "$IS_MUSL" = true ]; then
-        RELEASE_TARGET="${TARGET_ARCH}-unknown-linux-musl"
-    else
-        RELEASE_TARGET="${TARGET_ARCH}-unknown-linux-gnu"
-    fi
-
-    TARBALL_URL="${GITHUB_URL}/releases/latest/download/rustfetch-${RELEASE_TARGET}.tar.gz"
-    echo -e "${BLUE}==>${NC} Checking for pre-compiled binary for ${RELEASE_TARGET}..."
-
-    if ! curl -sSfL "$TARBALL_URL" -o "$TEMP_DIR/rustfetch.tar.gz" 2>/dev/null; then
-        # Check GitHub API for version-tagged release archives (e.g., rustfetch-v0.1.0-x86_64-unknown-linux-gnu.tar.gz)
-        API_URL="https://api.github.com/repos/${REPO}/releases/latest"
-        TAGGED_URL="$(curl -sSfL "$API_URL" 2>/dev/null | grep -o 'https://[^" ]*'"${RELEASE_TARGET}"'\.tar\.gz' | head -n 1 || true)"
-        if [ -n "$TAGGED_URL" ]; then
-            curl -sSfL "$TAGGED_URL" -o "$TEMP_DIR/rustfetch.tar.gz" 2>/dev/null || true
-        fi
-    fi
-
-    if [ -s "$TEMP_DIR/rustfetch.tar.gz" ]; then
-        echo -e "${GREEN}==>${NC} Downloaded pre-compiled release binary successfully."
-        tar -xzf "$TEMP_DIR/rustfetch.tar.gz" -C "$TEMP_DIR"
-        BIN_FOUND="$(find "$TEMP_DIR" -type f -name rustfetch -perm -111 | head -n 1)"
-        if [ -n "$BIN_FOUND" ]; then
-            BUILD_DIR="$(dirname "$BIN_FOUND")"
-            INSTALLED_FROM_BINARY=true
-        fi
-    fi
-fi
-
-# 3. Fallback: Build from source with Cargo if binary not found
-if [ -z "$BUILD_DIR" ]; then
-    echo -e "${YELLOW}==>${NC} Building from source via Cargo..."
+else
+    echo -e "${BLUE}==>${NC} Preparing RustFetch installation..."
 
     if ! command -v cargo &>/dev/null; then
         if [ -f "$HOME/.cargo/env" ]; then
@@ -106,7 +74,7 @@ if [ -z "$BUILD_DIR" ]; then
     fi
 
     if ! command -v cargo &>/dev/null; then
-        echo -e "${YELLOW}==>${NC} Cargo is not installed. Installing Rust toolchain..."
+        echo -e "${YELLOW}==>${NC} Cargo is not installed. Installing minimal Rust toolchain..."
         curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal
         . "$HOME/.cargo/env" 2>/dev/null || true
     fi
@@ -126,7 +94,7 @@ if [ -z "$BUILD_DIR" ]; then
     fi
 
     SRC_DIR="$TEMP_DIR/source"
-    echo -e "${BLUE}==>${NC} Cloning repository into ${SRC_DIR}..."
+    echo -e "${BLUE}==>${NC} Fetching latest source code from ${GITHUB_URL}..."
     git clone --depth 1 "${GITHUB_URL}.git" "$SRC_DIR"
 
     echo -e "${BLUE}==>${NC} Compiling release binary (LTO optimized)..."
@@ -255,43 +223,19 @@ fi
 
 if [ "$MODE_CHOICE" = "3d" ]; then
     echo -e "${GREEN}==>${NC} Configured default mode: ${BLUE}3D Animated${NC} (3d = true)"
+    if [ ! -f "$CONFIG_FILE" ]; then
+        "$FINAL_BIN_DIR/rustfetch" --print-default-config > "$CONFIG_FILE" 2>/dev/null || true
+    fi
     if [ -f "$CONFIG_FILE" ]; then
         if grep -q "\[general\.logo\.three_d\]" "$CONFIG_FILE"; then
             sed -i '/\[general\.logo\.three_d\]/,/^\[/ s/enabled = .*/enabled = true/' "$CONFIG_FILE"
-        else
-            cat << 'EOF' >> "$CONFIG_FILE"
-
-[general.logo.three_d]
-enabled = true
-EOF
         fi
-    else
-        cat << 'EOF' > "$CONFIG_FILE"
-[general]
-separator = ":"
-padding = 1
-center = true
-icons = true
-border = false
-
-[general.colors]
-enabled = true
-symbol = "●"
-block = false
-
-[general.logo]
-enabled = true
-distro = "auto"
-3d = true
-
-[general.logo.three_d]
-enabled = true
-speed = 1.0
-shading_mode = "ascii"
-EOF
     fi
 else
     echo -e "${GREEN}==>${NC} Configured default mode: ${BLUE}Standard 2D${NC} (3d = false)"
+    if [ ! -f "$CONFIG_FILE" ]; then
+        "$FINAL_BIN_DIR/rustfetch" --print-default-config > "$CONFIG_FILE" 2>/dev/null || true
+    fi
     if [ -f "$CONFIG_FILE" ]; then
         if grep -q "\[general\.logo\.three_d\]" "$CONFIG_FILE"; then
             sed -i '/\[general\.logo\.three_d\]/,/^\[/ s/enabled = .*/enabled = false/' "$CONFIG_FILE"
@@ -299,29 +243,13 @@ else
         if grep -q "3d = true" "$CONFIG_FILE"; then
             sed -i 's/3d = true/3d = false/' "$CONFIG_FILE"
         fi
-    else
-        cat << 'EOF' > "$CONFIG_FILE"
-[general]
-separator = ":"
-padding = 1
-center = true
-icons = true
-border = false
-
-[general.colors]
-enabled = true
-symbol = "●"
-block = false
-
-[general.logo]
-enabled = true
-distro = "auto"
-3d = false
-
-[general.logo.three_d]
-enabled = false
-EOF
     fi
+fi
+
+# 10. Install automatic responsive shell integration hook (Tiling WMs: Hyprland, MangoWM, Sway, etc.)
+if [ -x "$FINAL_BIN_DIR/rustfetch" ]; then
+    echo -e "${BLUE}==>${NC} Installing automatic responsive shell hook for tiling window managers..."
+    "$FINAL_BIN_DIR/rustfetch" --install-hook 2>/dev/null || true
 fi
 
 echo ""

@@ -1,8 +1,8 @@
 pub mod battery;
 pub mod bluetooth;
 pub mod board;
-pub mod break_line;
 pub mod brightness;
+pub mod container;
 pub mod cpu;
 pub mod cpu_usage;
 pub mod custom;
@@ -12,6 +12,7 @@ pub mod display;
 pub mod font;
 pub mod gpu;
 pub mod host;
+pub mod init;
 pub mod kernel;
 pub mod local_ip;
 pub mod locale;
@@ -56,6 +57,8 @@ pub fn all_modules() -> Vec<Box<dyn Module>> {
         Box::new(local_ip::LocalIpModule),
         Box::new(locale::Locale),
         Box::new(processes::Processes),
+        Box::new(init::Init),
+        Box::new(container::Container),
     ]
 }
 
@@ -88,9 +91,23 @@ pub fn module_by_name(name: &str) -> Option<Box<dyn Module>> {
         "local_ip" => Some(Box::new(local_ip::LocalIpModule)),
         "locale" => Some(Box::new(locale::Locale)),
         "processes" => Some(Box::new(processes::Processes)),
+        "init" | "initsystem" => Some(Box::new(init::Init)),
+        "container" | "vm" => Some(Box::new(container::Container)),
         "custom" => Some(Box::new(custom::Custom)),
-        "break" => Some(Box::new(break_line::BreakLine)),
+        "break" | "divider" => Some(Box::new(BreakLine)),
         _ => None,
+    }
+}
+
+pub struct BreakLine;
+
+impl Module for BreakLine {
+    fn name(&self) -> &'static str {
+        "break"
+    }
+
+    fn detect(&self) -> Option<crate::Info> {
+        Some(crate::Info::new("", ""))
     }
 }
 
@@ -105,6 +122,8 @@ mod tests {
         assert!(names.contains(&"temp"));
         assert!(names.contains(&"sound"));
         assert!(names.contains(&"brightness"));
+        assert!(names.contains(&"init"));
+        assert!(names.contains(&"container"));
         assert!(!names.contains(&"media"));
     }
 
@@ -116,6 +135,8 @@ mod tests {
         assert!(module_by_name("brightness").is_some());
         assert!(module_by_name("cpu_usage").is_some());
         assert!(module_by_name("bluetooth").is_some());
+        assert!(module_by_name("init").is_some());
+        assert!(module_by_name("container").is_some());
         assert!(module_by_name("custom").is_some());
         assert!(module_by_name("break").is_some());
         assert!(module_by_name("nonexistent").is_none());

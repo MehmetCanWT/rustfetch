@@ -328,12 +328,12 @@ pub fn parse_color(s: &str) -> Option<(u8, u8, u8)> {
     let s = s.trim();
     if s.starts_with('#') {
         let hex = s.trim_start_matches('#');
-        if hex.len() == 6 {
+        if hex.len() == 6 && hex.is_ascii() {
             let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
             let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
             let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
             return Some((r, g, b));
-        } else if hex.len() == 3 {
+        } else if hex.len() == 3 && hex.is_ascii() {
             let r = u8::from_str_radix(&hex[0..1], 16).ok()? * 17;
             let g = u8::from_str_radix(&hex[1..2], 16).ok()? * 17;
             let b = u8::from_str_radix(&hex[2..3], 16).ok()? * 17;
@@ -346,9 +346,10 @@ pub fn parse_color(s: &str) -> Option<(u8, u8, u8)> {
         "green" => Some((76, 175, 80)),
         "yellow" => Some((255, 193, 7)),
         "blue" => Some((66, 165, 245)),
-        "magenta" => Some((186, 104, 200)),
+        "magenta" | "pink" => Some((186, 104, 200)),
         "cyan" => Some((38, 198, 218)),
         "white" => Some((245, 245, 245)),
+        "orange" => Some((233, 84, 32)),
         _ => None,
     }
 }

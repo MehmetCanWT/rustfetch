@@ -1,5 +1,6 @@
-use crate::{Info, Module};
+use crate::{cache::Cache, Info, Module};
 use std::fs;
+use std::time::Duration;
 
 pub struct GpuModule;
 
@@ -9,6 +10,10 @@ impl Module for GpuModule {
     }
 
     fn detect(&self) -> Option<Info> {
+        let cache = Cache::new("gpu");
+        if let Some(cached_val) = cache.read(Duration::from_secs(24 * 3600)) {
+            return Some(Info::new("GPU", cached_val));
+        }
         let mut pci_devices = Vec::new();
         if let Ok(dir) = fs::read_dir("/sys/bus/pci/devices") {
             for entry in dir.flatten() {
@@ -67,7 +72,9 @@ impl Module for GpuModule {
             return None;
         }
 
-        Some(Info::new("GPU", gpus.join(", ")))
+        let result = gpus.join(", ");
+        cache.write(&result);
+        Some(Info::new("GPU", result))
     }
 }
 
@@ -84,7 +91,10 @@ fn lookup_pci_in_content(content: &str, vendor_id: &str, device_id: &str) -> Opt
         }
 
         if !line.starts_with('\t') {
-            if line.len() >= 4 && line[..4].eq_ignore_ascii_case(vendor_id) {
+            if line.len() >= 4
+                && line.is_char_boundary(4)
+                && line[..4].eq_ignore_ascii_case(vendor_id)
+            {
                 in_vendor = true;
                 current_vendor = line[4..]
                     .replace(" Corporation", "")
@@ -97,7 +107,10 @@ fn lookup_pci_in_content(content: &str, vendor_id: &str, device_id: &str) -> Opt
             }
         } else if in_vendor && !line.starts_with("\t\t") {
             let line = &line[1..];
-            if line.len() >= 4 && line[..4].eq_ignore_ascii_case(device_id) {
+            if line.len() >= 4
+                && line.is_char_boundary(4)
+                && line[..4].eq_ignore_ascii_case(device_id)
+            {
                 let dev_name = line[4..].trim();
                 let dev_clean = if let (Some(s), Some(e)) = (dev_name.find('['), dev_name.find(']'))
                 {
@@ -114,4 +127,35 @@ fn lookup_pci_in_content(content: &str, vendor_id: &str, device_id: &str) -> Opt
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_gpu_module_name() {
+        assert_eq!(GpuModule.name(), "gpu");
+    }
+
+    #[test]
+    fn test_lookup_pci_in_content() {
+        let sample = "\
+10de  NVIDIA Corporation
+\t1f91  TU117M [GeForce GTX 1650 Mobile / Max-Q]
+8086  Intel Corporation
+\t9a60  TigerLake-H GT1 [UHD Graphics]
+";
+        let gpu1 = lookup_pci_in_content(sample, "10de", "1f91");
+        assert_eq!(
+            gpu1,
+            Some("NVIDIA GeForce GTX 1650 Mobile / Max-Q".to_string())
+        );
+
+        let gpu2 = lookup_pci_in_content(sample, "8086", "9a60");
+        assert_eq!(gpu2, Some("Intel UHD Graphics".to_string()));
+
+        let gpu3 = lookup_pci_in_content(sample, "ffff", "0000");
+        assert_eq!(gpu3, None);
+    }
 }

@@ -3,7 +3,7 @@
 <div align="center">
 
 ![Rust](https://img.shields.io/badge/Language-Rust%202021-DEA584?style=for-the-badge&logo=rust)
-![Modules](https://img.shields.io/badge/Modules-27%20Telemetry%20Collectors-4D9375?style=for-the-badge)
+![Modules](https://img.shields.io/badge/Modules-29%20Telemetry%20Collectors-4D9375?style=for-the-badge)
 ![Architecture](https://img.shields.io/badge/Architecture-Zero--Fork%20Kernel-61afef?style=for-the-badge)
 ![Performance](https://img.shields.io/badge/Latency-%3C5ms%20Full%20Fetch-E5C07B?style=for-the-badge)
 ![License](https://img.shields.io/badge/License-MIT-98c379?style=for-the-badge)
@@ -59,6 +59,8 @@ Unlike traditional fetch scripts that spawn dozens of subshells (`bash -c`, `gre
 | `` | [`sound`](#sound) | Multimedia | WirePlumber (`wpctl`) / PulseAudio | Yes | Optional |
 | `󰝚` | [`media`](#media) | Multimedia | MPRIS D-Bus (`playerctl metadata`) | No | Optional |
 | `` | [`processes`](#processes) | System | `/proc/loadavg` & PID count | No | Optional |
+| `` | [`init`](#init) | System | `/proc/1/comm` & `/proc/1/exe` | No | Optional |
+| `󰡨` | [`container`](#container) | System | `/.dockerenv`, `/run/systemd/container`, DMI | No | Optional |
 | `●` | [`colors`](#colors) | Layout | ANSI 16 / Dynamic Image TrueColor | — | Enabled |
 | `` | [`custom`](#custom) | Layout | Static or user-defined text | No | Optional |
 | ` ` | [`break`](#break) | Layout | Blank vertical spacing row | — | Optional |

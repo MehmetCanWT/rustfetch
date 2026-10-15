@@ -34,3 +34,15 @@ research/
 *.color
 *.patch
 out.txt
+
+# Archives, packages and checksums
+*.tar.gz
+*.tar.xz
+*.tar.bz2
+*.zip
+*.sha256
+
+# Cache and core dumps
+.cache/
+*.dump
+core.[0-9]*

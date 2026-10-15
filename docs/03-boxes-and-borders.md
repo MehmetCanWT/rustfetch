@@ -25,44 +25,84 @@ rustfetch --border-image ~/Pictures/frame.png --icon-only
 
 ### Configuration in `config.toml`
 
+#### Single Border Image (Grouped Setup)
+```toml
+[general.border_image]
+path = "~/.config/rustfetch/frames/vintage_corner.png"
+position = "behind"        # Default: "behind" ("behind", "background", "left", "right", "top", "bottom")
+width = 24                 # Width in terminal columns (default: 24)
+height = 15                # Height in rows (optional, default: auto)
+offset_x = 0               # Horizontal shift in columns
+offset_y = 0               # Vertical shift in rows
+z_index = -1               # Kitty z-index (-1 renders directly behind text)
+protocol = "auto"          # "auto", "kitty", or "halfblock"
+```
+
+#### Legacy Flat Configuration (Supported for backwards compatibility)
 ```toml
 [general]
 border_image = "~/.config/rustfetch/frames/vintage_corner.png"
-border_image_width = 24    # Width in terminal columns (default: 24)
-border_image_position = "frame" # "left", "right", "top", "bottom", or "frame"
-icon_only = true           # Clean icon-only format next to the frame
+border_image_position = "behind"
+border_image_width = 24
+```
+
+#### Multi-Image Composition (`[[general.border_images]]`)
+You can define arbitrarily many border images layered simultaneously:
+
+```toml
+[general]
+border = true
+border_style = "rounded"
+
+# High-definition native backdrop behind the telemetry modules
+[[general.border_images]]
+path = "~/Pictures/wallpapers/card_backdrop.png"
+position = "background"
+z_index = -1
+protocol = "auto"         # Uses Kitty GPU text-underlay if supported, else ANSI TrueColor fallback
+
+# Decorative ornament on the right side
+[[general.border_images]]
+path = "~/.config/rustfetch/frames/ornament.png"
+position = "right"
+width = 20
 ```
 
 ### Border Image Placement
 
-`border_image_position` controls where the rasterized image is composed relative
-to the complete telemetry card. It works with both plain telemetry and a normal
-Unicode `border = true` card, so image decoration and text-box borders can be
-layered together.
+`border_image_position` (or `position` in `[[general.border_images]]`) controls where the image is composed relative to the module card:
 
 | Position | Result |
 |---|---|
-| `left` | Backwards-compatible image column before the module card. |
-| `right` | Image column after the module card. |
-| `top` | Image rows above the complete module card. |
-| `bottom` | Image rows below the complete module card. |
-| `frame` | Reuses the same image on both sides of the module card. |
+| `background` / `behind` | **High-Definition Card Backdrop:** Renders directly behind the modules as a background card. In Kitty/Ghostty/WezTerm, rendered natively via GPU text-underlay (`z=-1, C=1`) with zero pixelation. In standard terminals, rendered via TrueColor ANSI background coloring. |
+| `left` | Decorative column before the module card. |
+| `right` | Decorative column after the module card. |
+| `top` | Decorative rows above the complete module card. |
+| `bottom` | Decorative rows below the complete module card. |
+| `frame` / `both` | Reuses the image on both sides of the module card. |
 
 ```bash
-# Put a normal rounded module card between two image decorations.
-rustfetch --no-logo --border --border-title "System" \
-  --border-image ~/.config/rustfetch/frames/side.png \
-  --border-image-position frame
+# Render a high-definition background card directly behind telemetry
+rustfetch --no-logo --border --border-image images/arch.png --border-image-position background
+
+# Adjust dimensions and offsets
+rustfetch --border --border-image ~/Pictures/art.png --border-image-position background \
+  --border-image-width 60 --border-image-height 20 --border-image-offset-x 2
+
+# Force half-block ANSI background fallback mode
+rustfetch --border --border-image images/arch.png --border-image-position background \
+  --border-image-protocol halfblock
 ```
 
-### How the Image Border Engine Works:
-1. **TrueColor Half-Block Rasterization:**
-   RustFetch reads the image file and samples pixel colors with bilinear filtering. Every pair of vertical pixels is mapped into a UTF-8 half-block element (`▀` / `▄`) with 24-bit foreground and background escape codes (`\x1b[38;2;...m\x1b[48;2;...m`).
-2. **Alpha Transparency Preservation:**
-   Transparent pixels (`alpha < 30`) remain completely transparent (rendered as clean whitespace), allowing the border graphic to blend seamlessly into your terminal's background.
-3. **Multi-Column Horizontal Composition:**
-   - **Logo + Module Frame:** An image logo remains the primary logo, while the border image decorates the complete module card according to `border_image_position`.
-   - **Standalone Frame:** If no logo is enabled (`--no-logo`), image placement still applies directly to the telemetry block.
+### How the High-Definition Image Border Engine Works:
+1. **Kitty Graphics Protocol Text-Underlay (`z=-1, C=1`):**
+   In modern GPU-accelerated terminal emulators (Kitty, Ghostty, WezTerm), RustFetch transmits the image using the Kitty Graphics Protocol with `z=-1` (layer under text cells) and `C=1` (cursor anchor). The terminal GPU draws the original, crisp high-resolution image behind the character cells at monitor native resolution. The telemetry modules then print directly on top with transparent backgrounds, completely eliminating half-block pixelation.
+2. **TrueColor ANSI Cell Background Fallback:**
+   For terminal emulators that do not support Kitty graphics (e.g. Alacritty, Linux TTY), RustFetch samples the image pixels and injects 24-bit TrueColor background ANSI codes (`\x1b[48;2;R;G;Bm`) into each character cell, so telemetry text visibly sits on top of the image colors without corrupting the layout.
+3. **TrueColor Half-Block Rasterization for Frames:**
+   For `left`, `right`, `top`, `bottom`, and `frame` placements, images are rasterized into dual-pixel half-block elements (`▀` / `▄`) with alpha transparency preservation.
+4. **Multi-Image Compositing:**
+   Multiple border images defined in `[[general.border_images]]` are composed sequentially: side/top frames wrap around the card first, and background backdrops are rendered underneath the complete composition.
 
 ---
 

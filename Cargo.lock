@@ -1245,7 +1245,7 @@ dependencies = [
 
 [[package]]
 name = "rustfetch"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "clap",
  "clap_complete",
@@ -1261,7 +1261,7 @@ dependencies = [
 
 [[package]]
 name = "rustfetch-core"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "insta",
  "libc",
@@ -1272,12 +1272,14 @@ dependencies = [
 
 [[package]]
 name = "rustfetch-render"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "base64",
  "fast_image_resize",
  "image",
  "libc",
+ "miniz_oxide 0.8.9",
+ "unicode-width",
 ]
 
 [[package]]

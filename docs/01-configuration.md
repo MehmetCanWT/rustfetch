@@ -62,21 +62,26 @@ icons = true               # Enable or disable Nerd Font glyphs globally
 icon_only = false          # Hide text labels and display icons only
 key_type = "both"          # "both", "icon", "title", or "none"
 
-# Box Container Settings
-border = false             # Wrap telemetry lines in a border container
-border_style = "rounded"   # "ascii", "light", "heavy", "double", "rounded", "brackets", "dots", "block"
-border_color = "magenta"   # Color name ("blue", "cyan", "magenta") or hex ("#bd93f9")
-border_title = "System"    # Optional title embedded in top border line
-box_padding = 1            # Inner horizontal spacing between border and content
-
-# Image Border / Decorative Frame
-# border_image = "~/.config/rustfetch/frames/ornament.png"
-# border_image_width = 24
-# border_image_position = "frame" # left, right, top, bottom, or frame
-
 # Theme and Gradients
 theme = "catppuccin-mocha" # Built-in color theme
 # gradient = ["#f38ba8", "#cba6f7", "#89b4fa"] # Linear text gradient
+
+[general.border]
+enabled = false             # Wrap telemetry lines in a border container
+style = "rounded"          # "ascii", "light", "heavy", "double", "rounded", "brackets", "dots", "block"
+color = "magenta"          # Color name ("blue", "cyan", "magenta") or hex ("#bd93f9")
+title = "System"           # Optional title embedded in top border line
+padding = 1                # Inner horizontal spacing between border and content
+
+[general.border_image]
+# path = "~/.config/rustfetch/background.png"
+position = "behind"        # "behind", "background", "left", "right", "top", "bottom"
+# width = 30
+# height = 18
+# offset_x = 0
+# offset_y = 0
+# z_index = -1
+# protocol = "auto"
 
 [general.colors]
 enabled = true             # Display terminal color palette preview
@@ -87,8 +92,9 @@ rows = 1                   # 1 (8 colors) or 2 (16 colors including bright varia
 
 [general.logo]
 enabled = true             # Display logo/graphic
+position = "left"          # Placement: "left", "right", "top", "bottom", "behind", "hidden"
 distro = "auto"            # "auto" detects host OS, or override ("arch", "fedora", "ubuntu", etc.)
-protocol = "auto"          # Image protocol: "auto", "kitty", "halfblock", "sixel", "iterm"
+protocol = "auto"          # Image protocol: "auto", "kitty", "sixel", "halfblock"
 image_width_cols = 42      # Width of graphic column in terminal cells
 auto_color = true          # Adapt accent colors to image dominant color
 

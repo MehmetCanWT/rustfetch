@@ -52,6 +52,9 @@ printf '\n==> %s --completions bash\n' "$BIN"
 "$BIN" --completions bash > "$COMPLETION_OUTPUT"
 rg -q 'rustfetch' "$COMPLETION_OUTPUT"
 
+printf '\n==> %s --init bash\n' "$BIN"
+"$BIN" --init bash > /dev/null
+
 if "$BIN" --preset does-not-exist --no-logo > /dev/null 2>&1; then
     printf 'unknown presets must return a non-zero status\n' >&2
     exit 1

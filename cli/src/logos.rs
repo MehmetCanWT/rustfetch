@@ -27,8 +27,33 @@ pub const RASPBIAN_RED: &str = "\x1b[38;2;197;26;74m";
 pub const RASPBIAN_GREEN: &str = "\x1b[38;2;117;169;40m";
 pub const REDHAT_RED: &str = "\x1b[38;2;238;0;0m";
 pub const TUX_YELLOW: &str = "\x1b[38;2;255;193;7m";
-pub const TUX_DARK: &str = "\x1b[38;2;50;50;50m";
+pub const TUX_DARK: &str = "\x1b[38;2;45;45;45m";
 pub const WHITE: &str = "\x1b[38;2;255;255;255m";
+pub const CACHYOS_CYAN: &str = "\x1b[38;2;0;180;216m";
+pub const CACHYOS_GREEN: &str = "\x1b[38;2;0;204;153m";
+pub const CACHYOS_DARK: &str = "\x1b[38;2;40;40;40m";
+pub const FREEBSD_RED: &str = "\x1b[38;2;218;31;40m";
+pub const FREEBSD_WHITE: &str = "\x1b[38;2;255;255;255m";
+pub const OPENBSD_YELLOW: &str = "\x1b[38;2;242;194;0m";
+pub const OPENBSD_BLUE: &str = "\x1b[38;2;0;122;204m";
+pub const NETBSD_ORANGE: &str = "\x1b[38;2;255;102;0m";
+pub const ENDEAVOUR_PURPLE: &str = "\x1b[38;2;127;63;191m";
+pub const ENDEAVOUR_RED: &str = "\x1b[38;2;255;75;100m";
+pub const ENDEAVOUR_BLUE: &str = "\x1b[38;2;0;164;239m";
+pub const MACOS_GREEN: &str = "\x1b[38;2;97;187;70m";
+pub const MACOS_YELLOW: &str = "\x1b[38;2;244;180;0m";
+pub const MACOS_ORANGE: &str = "\x1b[38;2;230;113;34m";
+pub const MACOS_RED: &str = "\x1b[38;2;227;61;64m";
+pub const MACOS_PURPLE: &str = "\x1b[38;2;150;61;151m";
+pub const MACOS_BLUE: &str = "\x1b[38;2;0;157;220m";
+pub const WINDOWS_BLUE: &str = "\x1b[38;2;0;164;239m";
+pub const WINDOWS_RED: &str = "\x1b[38;2;242;80;34m";
+pub const WINDOWS_GREEN: &str = "\x1b[38;2;127;186;0m";
+pub const WINDOWS_YELLOW: &str = "\x1b[38;2;255;185;0m";
+pub const GARUDA_ORANGE: &str = "\x1b[38;2;240;80;35m";
+pub const GARUDA_YELLOW: &str = "\x1b[38;2;255;170;0m";
+pub const NOBARA_WHITE: &str = "\x1b[38;2;255;255;255m";
+pub const ARCHCRAFT_TEAL: &str = "\x1b[38;2;94;178;167m";
 
 /// A terminal-printable ASCII logo.
 #[derive(Debug, Clone)]
@@ -44,16 +69,24 @@ pub struct Logo {
 }
 
 impl Logo {
-    /// Number of lines in the logo.
-    #[allow(dead_code)]
-    pub fn height(&self) -> usize {
-        self.lines.len()
-    }
-
     /// Return the logo lines pre-colored with ANSI codes.
     /// Carries the active color across lines for multi-colored logos.
     pub fn colored_lines(&self) -> Vec<String> {
-        let mut active_color = self.colors.first().copied().unwrap_or(self.color);
+        self.colored_lines_with_custom(None, None)
+    }
+
+    /// Return the logo lines colored with optional custom override color or custom palette.
+    pub fn colored_lines_with_custom(
+        &self,
+        override_color: Option<&str>,
+        custom_palette: Option<&[&str]>,
+    ) -> Vec<String> {
+        let base_color = override_color.unwrap_or(self.color);
+        let mut active_color = if let Some(pal) = custom_palette {
+            pal.first().copied().unwrap_or(base_color)
+        } else {
+            override_color.unwrap_or_else(|| self.colors.first().copied().unwrap_or(self.color))
+        };
         self.lines
             .iter()
             .map(|line| {
@@ -66,7 +99,14 @@ impl Logo {
                             if let Some(digit) = next.to_digit(10) {
                                 chars.next();
                                 let idx = (digit as usize).saturating_sub(1);
-                                active_color = self.colors.get(idx).copied().unwrap_or(self.color);
+                                if let Some(pal) = custom_palette {
+                                    active_color = pal.get(idx).copied().unwrap_or(base_color);
+                                } else if let Some(ov) = override_color {
+                                    active_color = ov;
+                                } else {
+                                    active_color =
+                                        self.colors.get(idx).copied().unwrap_or(self.color);
+                                }
                                 out.push_str(active_color);
                                 continue;
                             }
@@ -109,7 +149,41 @@ pub fn compute_logo_width(lines: &[&str]) -> usize {
 /// Returns a generic Linux/Tux logo for unknown distros.
 pub fn get_logo(distro: &str) -> Logo {
     let lower = distro.to_lowercase();
-    if lower.contains("fedora") {
+    // 1. Compact / small variants first
+    if lower.contains("cachyos_small") || lower.contains("cachy_small") {
+        cachyos_small()
+    } else if lower.contains("freebsd_small") || lower.contains("bsd_small") {
+        freebsd_small()
+    } else if lower.contains("nixos_small") || lower.contains("nix_small") {
+        nixos_small()
+    } else if lower.contains("arch_small") {
+        arch_small()
+    } else if lower.contains("fedora_small") {
+        fedora_small()
+    } else if lower.contains("ubuntu_small") {
+        ubuntu_small()
+    } else if lower.contains("debian_small") {
+        debian_small()
+    // 2. Standard distribution logos
+    } else if lower.contains("cachyos") || lower.contains("cachy") {
+        cachyos()
+    } else if lower.contains("freebsd") {
+        freebsd()
+    } else if lower.contains("openbsd") {
+        openbsd()
+    } else if lower.contains("netbsd") {
+        netbsd()
+    } else if lower.contains("archcraft") {
+        archcraft()
+    } else if lower.contains("garuda") {
+        garuda()
+    } else if lower.contains("nobara") {
+        nobara()
+    } else if lower.contains("darwin") || lower.contains("macos") || lower.contains("apple") {
+        macos()
+    } else if lower.contains("windows") {
+        windows()
+    } else if lower.contains("fedora") {
         fedora()
     } else if lower.contains("arch") {
         arch()
@@ -551,8 +625,8 @@ fn endeavour() -> Logo {
     let width = compute_logo_width(&lines);
     Logo {
         lines,
-        color: GENTOO_PURPLE,
-        colors: vec![GENTOO_PURPLE, DEBIAN_RED, ARCH_CYAN],
+        color: ENDEAVOUR_PURPLE,
+        colors: vec![ENDEAVOUR_PURPLE, ENDEAVOUR_RED, ENDEAVOUR_BLUE],
         width,
     }
 }
@@ -864,6 +938,429 @@ fn linux() -> Logo {
     }
 }
 
+fn cachyos() -> Logo {
+    let lines = vec![
+        r##"           $3.$1-------------------------:"##,
+        r##"          .$2+=$1========================."##,
+        r##"         :$2++$1===$2++===$1===============-       :$2++$1-"##,
+        r##"        :$2*++$1====$2+++++==$1===========-        .==:"##,
+        r##"       -$2*+++$1=====$2+***++=$1=========:"##,
+        r##"      =$2*++++=$1=======------------:"##,
+        r##"     =$2*+++++=$1====-                     $3...$1"##,
+        r##"   .$2+*+++++$1=-===:                    .$2=+++=$1:"##,
+        r##"  :$2++++$1=====-==:                     -***$2**$1+"##,
+        r##" :$2++=$1=======-=.                      .=+**+$3.$1"##,
+        r##".$2+$1==========-.                          $3.$1"##,
+        r##" :$2+++++++$1====-                                $3.$1--==-$3.$1"##,
+        r##"  :$2++$1==========.                             $3:$2+++++++$1$3:"##,
+        r##"   $1.-===========.                            =*****+*+"##,
+        r##"    $1.-===========:                           .+*****+:"##,
+        r##"      $1-=======$2++++$1:::::::::::::::::::::::::-:  $3.$1---:"##,
+        r##"       :======$2++++$1====$2+++******************=."##,
+        r##"        $1:=====$2+++$1==========$2++++++++++++++*-"##,
+        r##"         $1.====$2++$1==============$2++++++++++*-"##,
+        r##"          $1.===$2+$1==================$2+++++++:"##,
+        r##"           $1.-=======================$2+++:"##,
+        r##"             $3.........................."##,
+    ];
+    let width = compute_logo_width(&lines);
+    Logo {
+        lines,
+        color: CACHYOS_CYAN,
+        colors: vec![CACHYOS_CYAN, CACHYOS_GREEN, CACHYOS_DARK],
+        width,
+    }
+}
+
+fn cachyos_small() -> Logo {
+    let lines = vec![
+        r##"     ..........."##,
+        r##"    $2/,,,,$1...../"##,
+        r##"   $2/,,,$1..$2,,$1../   $2()"##,
+        r##"  $2/,,,,$1../"##,
+        r##" $2/,,,$1.../     $1/'\"##,
+        r##"$2/,$1...../      $2\,/"##,
+        r##"$2\,,,,,,\\             $1_"##,
+        r##" $2\,,$1....\\           $1/ \"##,
+        r##"  $1\...$2,$1..\\          $2\_/"##,
+        r##"   $1\..$2,,,,,,,,,,,,/"##,
+        r##"    $1\$2,,$1........$2,,/"##,
+    ];
+    let width = compute_logo_width(&lines);
+    Logo {
+        lines,
+        color: CACHYOS_CYAN,
+        colors: vec![CACHYOS_GREEN, CACHYOS_CYAN],
+        width,
+    }
+}
+
+fn freebsd() -> Logo {
+    let lines = vec![
+        r##"```                        $2`"##,
+        r##"  $1` `.....---...$2....--.```   -/"##,
+        r##"  $1+o   .--`         $2/y:`      +."##,
+        r##"   $1yo`:.            $2:o      `+-"##,
+        r##"    $1y/               $2-/`   -o/"##,
+        r##"   $1.-                  $2::/sy+:."##,
+        r##"   $1/                     $2`--  /"##,
+        r##"  $1`:                          $2:`"##,
+        r##"  $1`:                          $2:`"##,
+        r##"   $1/                          $2/"##,
+        r##"   $1.-                        $2-."##,
+        r##"    $1--                      $2-."##,
+        r##"     $1`:`                  $2`:`"##,
+        r##"       .--             `--."##,
+        r##"          .---.....----."##,
+    ];
+    let width = compute_logo_width(&lines);
+    Logo {
+        lines,
+        color: FREEBSD_RED,
+        colors: vec![FREEBSD_WHITE, FREEBSD_RED],
+        width,
+    }
+}
+
+fn freebsd_small() -> Logo {
+    let lines = vec![
+        r##"$1/\,-'''''-,/\"##,
+        r##"\_)       (_/"##,
+        r##"|           |"##,
+        r##"|           |"##,
+        r##" ;         ;"##,
+        r##"  '-_____-'"##,
+    ];
+    let width = compute_logo_width(&lines);
+    Logo {
+        lines,
+        color: FREEBSD_RED,
+        colors: vec![FREEBSD_RED],
+        width,
+    }
+}
+
+fn nixos_small() -> Logo {
+    let lines = vec![
+        r##"$1  ▗▄   $2▗▄ ▄▖"##,
+        r##"$1 ▄▄🬸█▄▄▄$2🬸█▛ $3▃"##,
+        r##"$6   ▟▛    $2▜$3▃▟🬕"##,
+        r##"$6🬋🬋🬫█      $3█🬛🬋🬋"##,
+        r##"$6 🬷▛🮃$5▙    $3▟▛"##,
+        r##"$6 🮃 $5▟█🬴$4▀▀▀█🬴▀▀"##,
+        r##"  $5▝▀ ▀▘   $4▀▘"##,
+    ];
+    let width = compute_logo_width(&lines);
+    Logo {
+        lines,
+        color: NIXOS_CYAN,
+        colors: vec![
+            NIXOS_BLUE, NIXOS_CYAN, NIXOS_BLUE, NIXOS_CYAN, NIXOS_BLUE, NIXOS_CYAN,
+        ],
+        width,
+    }
+}
+
+fn arch_small() -> Logo {
+    let lines = vec![
+        r##"      /\"##,
+        r##"     /  \"##,
+        r##"    /    \"##,
+        r##"   /      \"##,
+        r##"$2  /   ,,   \"##,
+        r##" /   |  |   \"##,
+        r##"/_-''    ''-_\"##,
+    ];
+    let width = compute_logo_width(&lines);
+    Logo {
+        lines,
+        color: ARCH_CYAN,
+        colors: vec![ARCH_CYAN, ARCH_LIGHT],
+        width,
+    }
+}
+
+fn fedora_small() -> Logo {
+    let lines = vec![
+        r##"        ,'''''."##,
+        r##"       |   ,.  |"##,
+        r##"       |  |  '_'"##,
+        r##"  ,....|  |.."##,
+        r##".'  ,_;|   ..'"##,
+        r##"|  |   |  |"##,
+        r##"|  ',_,'  |"##,
+        r##" '.     ,'"##,
+        r##"   '''''"##,
+    ];
+    let width = compute_logo_width(&lines);
+    Logo {
+        lines,
+        color: FEDORA_BLUE,
+        colors: vec![FEDORA_BLUE],
+        width,
+    }
+}
+
+fn ubuntu_small() -> Logo {
+    let lines = vec![
+        r##"       $2..;,; $1.,;,."##,
+        r##"    $2.,lool: $1.ooooo,"##,
+        r##"   $2;oo;:    $1.coool."##,
+        r##" $1....         $1''' $2,l;"##,
+        r##"$1:oooo,            $2'oo."##,
+        r##"$1looooc            $2:oo'"##,
+        r##" $1'::'             $2,oo:"##,
+        r##"   $2,.,       $1.... $2co,"##,
+        r##"    $2lo:;.   $1:oooo; $2."##,
+        r##"     $2':ooo; $1cooooc"##,
+        r##"        $2'''  $1''''"##,
+    ];
+    let width = compute_logo_width(&lines);
+    Logo {
+        lines,
+        color: UBUNTU_ORANGE,
+        colors: vec![WHITE, UBUNTU_ORANGE],
+        width,
+    }
+}
+
+fn debian_small() -> Logo {
+    let lines = vec![
+        r##"  _____"##,
+        r##" /  __ \"##,
+        r##"|  /    |"##,
+        r##"|  \___-"##,
+        r##"-_"##,
+        r##"  --_"##,
+    ];
+    let width = compute_logo_width(&lines);
+    Logo {
+        lines,
+        color: DEBIAN_RED,
+        colors: vec![DEBIAN_RED],
+        width,
+    }
+}
+
+fn openbsd() -> Logo {
+    let lines = vec![
+        r##"$3                                     _"##,
+        r##"                                    (_)"##,
+        r##"$1              |    ."##,
+        r##"$1          .   |L  /|   .         $3 _"##,
+        r##"$1      _ . |\ _| \--+._/| .       $3(_)"##,
+        r##"$1     / ||\| Y J  )   / |/| ./"##,
+        r##"    J  |)'( |        ` F`.'/       $3 _"##,
+        r##"$1  -<|  F         __     .-<        $3(_)"##,
+        r##"$1    | /       .-'$3. $1`.  /$3-. $1L___"##,
+        r##"    J \      <    $3\ $1 | | $5O$3\$1|.-' $3 _"##,
+        r##"$1  _J \  .-    \$3/ $5O $3| $1| \  |$1F    $3(_)"##,
+        r##"$1 '-F  -<_.     \   .-'  `-' L__"##,
+        r##"__J  _   _.     >-'  $1)$4._.   $1|-'"##,
+        r##"$1 `-|.'   /_.          $4\_|  $1 F"##,
+        r##"  /.-   .                _.<"##,
+        r##" /'    /.'             .'  `\"##,
+        r##"  /L  /'   |/      _.-'-\"##,
+        r##" /'J       ___.---'\|"##,
+        r##"   |\  .--' V  | `. `"##,
+        r##"   |/`. `-.     `._)"##,
+        r##"      / .-.\"##,
+        r##"      \ (  `\"##,
+        r##"       `.\"##,
+    ];
+    let width = compute_logo_width(&lines);
+    Logo {
+        lines,
+        color: OPENBSD_YELLOW,
+        colors: vec![OPENBSD_BLUE, WHITE, OPENBSD_YELLOW],
+        width,
+    }
+}
+
+fn netbsd() -> Logo {
+    let lines = vec![
+        r##"$1                     `-/oshdmNMNdhyo+:-`"##,
+        r##"$2y$1/s+:-``    `.-:+oydNMMMMNhs/-``"##,
+        r##"$2-m+$1NMMMMMMMMMMMMMMMMMMMNdhmNMMMmdhs+/-`"##,
+        r##" $2-m+$1NMMMMMMMMMMMMMMMMMMMMmy+:`"##,
+        r##"  $2-N/$1dMMMMMMMMMMMMMMMds:`"##,
+        r##"   $2-N/$1hMMMMMMMMMmho:`"##,
+        r##"    $2-N/$1-:/++/:.`"##,
+        r##"$2     :M+"##,
+        r##"      :Mo"##,
+        r##"       :Ms"##,
+        r##"        :Ms"##,
+        r##"         :Ms"##,
+        r##"          :Ms"##,
+        r##"           :Ms"##,
+        r##"            :Ms"##,
+        r##"             :Ms"##,
+        r##"              :Ms"##,
+    ];
+    let width = compute_logo_width(&lines);
+    Logo {
+        lines,
+        color: NETBSD_ORANGE,
+        colors: vec![WHITE, NETBSD_ORANGE],
+        width,
+    }
+}
+
+fn macos() -> Logo {
+    let lines = vec![
+        r##"                     ..'"##,
+        r##"                 ,xNMM."##,
+        r##"               .OMMMMo"##,
+        r##"               lMM""##,
+        r##"     .;loddo:.  .olloddol;."##,
+        r##"   cKMMMMMMMMMMNWMMMMMMMMMM0:"##,
+        r##" $2.KMMMMMMMMMMMMMMMMMMMMMMMWd."##,
+        r##" XMMMMMMMMMMMMMMMMMMMMMMMX."##,
+        r##"$3;MMMMMMMMMMMMMMMMMMMMMMMM:"##,
+        r##":MMMMMMMMMMMMMMMMMMMMMMMM:"##,
+        r##"$4.MMMMMMMMMMMMMMMMMMMMMMMMX."##,
+        r##" kMMMMMMMMMMMMMMMMMMMMMMMMWd."##,
+        r##" $5'XMMMMMMMMMMMMMMMMMMMMMMMMMMk"##,
+        r##"  'XMMMMMMMMMMMMMMMMMMMMMMMMK."##,
+        r##"    $6kMMMMMMMMMMMMMMMMMMMMMMd"##,
+        r##"     ;KMMMMMMMWXXWMMMMMMMk."##,
+        r##"       "cooc*"    "*coo'""##,
+    ];
+    let width = compute_logo_width(&lines);
+    Logo {
+        lines,
+        color: MACOS_GREEN,
+        colors: vec![
+            MACOS_GREEN,
+            MACOS_YELLOW,
+            MACOS_ORANGE,
+            MACOS_RED,
+            MACOS_PURPLE,
+            MACOS_BLUE,
+        ],
+        width,
+    }
+}
+
+fn windows() -> Logo {
+    let lines = vec![
+        r##"$1        ,.=:!!t3Z3z.,"##,
+        r##"       :tt:::tt333EE3"##,
+        r##"$1       Et:::ztt33EEEL$2 @Ee.,      ..,"##,
+        r##"$1      ;tt:::tt333EE7$2 ;EEEEEEttttt33#"##,
+        r##"$1     :Et:::zt333EEQ.$2 $EEEEEttttt33QL"##,
+        r##"$1     it::::tt333EEF$2 @EEEEEEttttt33F"##,
+        r##"$1    ;3=*^```"*4EEV$2 :EEEEEEttttt33@."##,
+        r##"$3    ,.=::::!t=., $1`$2 @EEEEEEtttz33QF"##,
+        r##"$3   ;::::::::zt33)$2   "4EEEtttji3P*"##,
+        r##"$3  :t::::::::tt33.$4:Z3z..$2  ``$4 ,..g."##,
+        r##"$3  i::::::::zt33F$4 AEEEtttt::::ztF"##,
+        r##"$3 ;:::::::::t33V$4 ;EEEttttt::::t3"##,
+        r##"$3 E::::::::zt33L$4 @EEEtttt::::z3F"##,
+        r##"$3{3=*^```"*4E3)$4 ;EEEtttt:::::tZ`"##,
+        r##"$3             `$4 :EEEEtttt::::z7"##,
+        r##"                 "VEzjt:;;z>*`"##,
+    ];
+    let width = compute_logo_width(&lines);
+    Logo {
+        lines,
+        color: WINDOWS_BLUE,
+        colors: vec![WINDOWS_RED, WINDOWS_GREEN, WINDOWS_BLUE, WINDOWS_YELLOW],
+        width,
+    }
+}
+
+fn garuda() -> Logo {
+    let lines = vec![
+        r##"                   .%;888:8898898:"##,
+        r##"                 x;XxXB%89b8:b8%b88:"##,
+        r##"              .8Xxd                8X:."##,
+        r##"            .8Xx;                    8x:."##,
+        r##"          .tt8x          .d            x88;"##,
+        r##"       .@8x8;          .db:              xx@;"##,
+        r##"     ,tSXX°          .bbbbbbbbbbbbbbbbbbbB8x@;"##,
+        r##"   .SXxx            bBBBBBBBBBBBBBBBBBBBbSBX8;"##,
+        r##" ,888S                                     pd!"##,
+        r##"8X88/                                       q"##,
+        r##"8X88/"##,
+        r##"GBB."##,
+        r##" x%88        d888@8@X@X@X88X@@XX@@X@8@X."##,
+        r##"   dxXd    dB8b8b8B8B08bB88b998888b88x."##,
+        r##"    dxx8o                      .@@;."##,
+        r##"      dx88                   .t@x."##,
+        r##"        d:SS@8ba89aa67a853Sxxad."##,
+        r##"          .d988999889889899dd."##,
+    ];
+    let width = compute_logo_width(&lines);
+    Logo {
+        lines,
+        color: GARUDA_ORANGE,
+        colors: vec![GARUDA_ORANGE, GARUDA_YELLOW],
+        width,
+    }
+}
+
+fn nobara() -> Logo {
+    let lines = vec![
+        r##"⢀⣤⣴⣶⣶⣶⣦⣤⡀⠀⣀⣠⣤⣴⣶⣶⣶⣶⣶⣶⣶⣶⣤⣤⣀⡀"##,
+        r##"⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣶⣤⡀"##,
+        r##"⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⣄"##,
+        r##"⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⣄"##,
+        r##"⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣧"##,
+        r##"⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠟⠋⠉⠁⠀⠀⠉⠉⠛⠿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣧"##,
+        r##"⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠟⠁⠀⠀⠀⢀⣀⣀⡀⠀⠀⠀⠈⢻⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡇"##,
+        r##"⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡏⠀⠀⠀⢠⣾⣿⣿⣿⣿⣷⡄⠀⠀⠀⠻⠿⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿"##,
+        r##"⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠁⠀⠀⠀⣿⣿⣿⣿⣿⣿⣿⡇⠀⠀⠀⠀⠀⣀⣀⣬⣽⣿⣿⣿⣿⣿⣿"##,
+        r##"⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠀⠀⠀⠀⠈⠻⢿⣿⣿⡿⠟⠁⠀⠀⠀⢸⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿"##,
+        r##"⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿"##,
+        r##"⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⣤⣤⣄⣀⡀⠀⠀⠀⠀⠀⠀⠀⠀⢸⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿"##,
+        r##"⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⣄⠀⠀⠀⠀⠀⠀⢸⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿"##,
+        r##"⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣇⠀⠀⠀⠀⠀⢸⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿"##,
+        r##"⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠟⠛⠉⠉⠛⠛⢿⣿⣿⠀⠀⠀⠀⠀⠸⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿"##,
+        r##"⠘⢿⣿⣿⣿⣿⣿⣿⣿⡿⠋⠀⠀⠀⠀⠀⠀⠀⠀⠈⢿⠀⠀⠀⠀⠀⠀⠙⢿⣿⣿⣿⣿⣿⣿⣿⠟⠁"##,
+        r##"  ⠈⠙⠛⠛⠛⠋⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⠛⠛⠛⠛⠉⠁"##,
+    ];
+    let width = compute_logo_width(&lines);
+    Logo {
+        lines,
+        color: NOBARA_WHITE,
+        colors: vec![NOBARA_WHITE],
+        width,
+    }
+}
+
+fn archcraft() -> Logo {
+    let lines = vec![
+        r##"$1⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄$1⢰⡆$1⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄"##,
+        r##"$2⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄$1⢠⣿⣿⡄$2⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄"##,
+        r##"$3⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄$1⢀⣾⣿⣿⣿⡀$3⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄"##,
+        r##"$4⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄$1⣼⣿⣿⣿⣿⣷⡀$4⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄"##,
+        r##"$5⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄$1⣼⣿⣿⣿⣿⣿⣿⣷$5⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄"##,
+        r##"$6⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄$1⢼⣿⣿⣿⣿⣿⣿⣿⣿⣧$6⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄"##,
+        r##"$1⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄$1⣰⣤⣈⠻⢿⣿⣿⣿⣿⣿⣿⣧$1⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄"##,
+        r##"$2⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄$1⣰⣿⣿⣿⣿⣮⣿⣿⣿⣿⣿⣿⣿⣧$2⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄"##,
+        r##"$3⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄$1⣰⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣧$3⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄"##,
+        r##"$4⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄$1⣰⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣧$4⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄"##,
+        r##"$5⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄$1⣼⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣧$5⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄"##,
+        r##"$6⠄⠄⠄⠄⠄⠄⠄⠄⠄$1⣼⣿⣿⣿⣿⣿⡿⣿⣿⡟$6⠄⠄$1⠸⣿⣿⡿⣿⣿⣿⣿⣿⣷⡀$6⠄⠄⠄⠄⠄⠄⠄⠄"##,
+        r##"$1⠄⠄⠄⠄⠄⠄⠄⠄$1⣼⣿⣿⣿⣿⣿⡏$1⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄$1⠈⣿⣿⣿⣿⣿⣷⡀$1⠄⠄⠄⠄⠄⠄⠄"##,
+        r##"$2⠄⠄⠄⠄⠄⠄$1⢀⣼⣿⣿⣿⣿⣿⣿⡗$2⠄⠄⠄$1⢀⣠⣤⣀⠄⠄⠄$1⠸⣿⣿⣿⣿⣿⣿⣷⡀$2⠄⠄⠄⠄⠄⠄"##,
+        r##"$3⠄⠄⠄⠄⠄$1⢀⣾⣿⣿⣿⣿⣿⡏⠁$3⠄⠄⠄$1⢠⣿⣿⣿⣿⡇$3⠄⠄⠄⠄$1⢙⣿⣿⣻⠿⣿⣷⡀$3⠄⠄⠄⠄⠄"##,
+        r##"$4⠄⠄⠄⠄$1⢀⣾⣿⣿⣿⣿⣿⣿⣷⣤⡀$4⠄⠄⠄$1⠻⣿⣿⡿⠃$4⠄⠄⠄$1⢀⣼⣿⣿⣿⣿⣦⣌⠙⠄$4⠄⠄⠄⠄"##,
+        r##"$5⠄⠄⠄$1⢠⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⠏$5⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄$1⢿⣿⣿⣿⣿⣿⣿⣿⣿⣦⡀$5⠄⠄⠄"##,
+        r##"$6⠄⠄$1⢠⣿⣿⣿⣿⣿⣿⣿⡿⠟⠋⠁$6⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄$1⠙⠻⣿⣿⣿⣿⣿⣿⣿⣿⡄$6⠄⠄"##,
+        r##"$1⠄$1⣠⣿⣿⣿⣿⠿⠛⠋⠁$1⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄$1⠉⠙⠻⢿⣿⣿⣿⣿⣆$1⠄"##,
+        r##"$1⡰⠟⠛⠉⠁$2⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄⠄$1⠉⠙⠛⠿⢆"##,
+    ];
+    let width = compute_logo_width(&lines);
+    Logo {
+        lines,
+        color: ARCHCRAFT_TEAL,
+        colors: vec![ARCHCRAFT_TEAL, ARCH_CYAN, ARCH_LIGHT, WHITE],
+        width,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -914,7 +1411,7 @@ mod tests {
         assert_eq!(get_logo("Alpine Linux").color, ALPINE_BLUE);
         assert_eq!(get_logo("Void Linux").color, VOID_GREEN);
         assert_eq!(get_logo("Gentoo").color, GENTOO_PURPLE);
-        assert_eq!(get_logo("EndeavourOS").color, GENTOO_PURPLE);
+        assert_eq!(get_logo("EndeavourOS").color, ENDEAVOUR_PURPLE);
         assert_eq!(get_logo("Kali GNU/Linux").color, KALI_BLUE);
         assert_eq!(get_logo("SteamOS").color, STEAM_BLUE);
         assert_eq!(get_logo("Artix Linux").color, ARTIX_CYAN);
@@ -924,5 +1421,21 @@ mod tests {
         assert_eq!(get_logo("AlmaLinux").color, DEBIAN_RED);
         assert_eq!(get_logo("Zorin OS").color, ZORIN_BLUE);
         assert_eq!(get_logo("Raspbian").color, RASPBIAN_RED);
+        assert_eq!(get_logo("CachyOS").color, CACHYOS_CYAN);
+        assert_eq!(get_logo("cachyos_small").color, CACHYOS_CYAN);
+        assert_eq!(get_logo("FreeBSD").color, FREEBSD_RED);
+        assert_eq!(get_logo("freebsd_small").color, FREEBSD_RED);
+        assert_eq!(get_logo("OpenBSD").color, OPENBSD_YELLOW);
+        assert_eq!(get_logo("NetBSD").color, NETBSD_ORANGE);
+        assert_eq!(get_logo("Garuda Linux").color, GARUDA_ORANGE);
+        assert_eq!(get_logo("Nobara Linux").color, NOBARA_WHITE);
+        assert_eq!(get_logo("Archcraft").color, ARCHCRAFT_TEAL);
+        assert_eq!(get_logo("macOS").color, MACOS_GREEN);
+        assert_eq!(get_logo("Windows").color, WINDOWS_BLUE);
+        assert_eq!(get_logo("nixos_small").color, NIXOS_CYAN);
+        assert_eq!(get_logo("arch_small").color, ARCH_CYAN);
+        assert_eq!(get_logo("fedora_small").color, FEDORA_BLUE);
+        assert_eq!(get_logo("ubuntu_small").color, UBUNTU_ORANGE);
+        assert_eq!(get_logo("debian_small").color, DEBIAN_RED);
     }
 }

@@ -516,6 +516,10 @@ pub fn distro_3d_colors(distro: &str) -> (&'static str, &'static str) {
         ("\x1b[38;2;53;191;92m", "\x1b[38;2;255;255;255m") // Manjaro green (#35bf5c), white
     } else if d.contains("macos") || d.contains("darwin") || d.contains("pop") {
         ("\x1b[38;2;51;162;230m", "\x1b[38;2;255;255;255m") // Apple/Pop cyan (#33a2e6), white
+    } else if d.contains("cachyos") || d.contains("cachy") {
+        ("\x1b[38;2;0;180;216m", "\x1b[38;2;0;204;153m") // CachyOS cyan outer (#00b4d8), green inner (#00cc99)
+    } else if d.contains("freebsd") || d.contains("bsd") {
+        ("\x1b[38;2;218;31;40m", "\x1b[38;2;255;255;255m") // FreeBSD red (#da1f28), white
     } else {
         ("\x1b[38;2;254;122;230m", "\x1b[38;2;255;255;255m") // Default Tux: vivid pink outer, pure white inner
     }
@@ -527,25 +531,10 @@ pub fn parse_color_to_ansi(color_str: &str) -> String {
     if s.starts_with("\x1b[") {
         return s.to_string();
     }
-    if s.starts_with('#') && s.len() == 7 {
-        if let (Ok(r), Ok(g), Ok(b)) = (
-            u8::from_str_radix(&s[1..3], 16),
-            u8::from_str_radix(&s[3..5], 16),
-            u8::from_str_radix(&s[5..7], 16),
-        ) {
-            return format!("\x1b[38;2;{r};{g};{b}m");
-        }
-    }
-    match s.to_lowercase().as_str() {
-        "blue" => "\x1b[38;2;41;168;224m".to_string(),
-        "white" => "\x1b[38;2;255;255;255m".to_string(),
-        "pink" | "magenta" => "\x1b[38;2;254;122;230m".to_string(),
-        "cyan" => "\x1b[38;2;23;147;209m".to_string(),
-        "red" => "\x1b[38;2;239;68;68m".to_string(),
-        "green" => "\x1b[38;2;34;197;94m".to_string(),
-        "yellow" => "\x1b[38;2;234;179;8m".to_string(),
-        "orange" => "\x1b[38;2;233;84;32m".to_string(),
-        _ => s.to_string(),
+    if let Some((r, g, b)) = crate::color::parse_color(s) {
+        format!("\x1b[38;2;{r};{g};{b}m")
+    } else {
+        s.to_string()
     }
 }
 
@@ -585,12 +574,13 @@ impl Renderer3D {
         let total_sub_cols = canvas_cols * sub_cols;
         let total_sub_rows = canvas_rows * sub_rows;
 
-        // Buffers: z-buffer (ooz), luminance, color index / ANSI string
-        let mut zbuf = vec![vec![0.0f32; total_sub_cols]; total_sub_rows];
-        let mut lumbuf = vec![vec![0.0f32; total_sub_cols]; total_sub_rows];
-        let mut colorbuf: Vec<Vec<Option<String>>> =
-            vec![vec![None; total_sub_cols]; total_sub_rows];
-        let mut is_outer_buf = vec![vec![false; total_sub_cols]; total_sub_rows];
+        let total_cells = total_sub_rows * total_sub_cols;
+
+        // Flat 1D buffers: z-buffer (ooz), luminance, color index / slice, outer flag
+        let mut zbuf = vec![0.0f32; total_cells];
+        let mut lumbuf = vec![0.0f32; total_cells];
+        let mut colorbuf: Vec<Option<&str>> = vec![None; total_cells];
+        let mut is_outer_buf = vec![false; total_cells];
 
         let cos_a = angle_x.cos();
         let sin_a = angle_x.sin();
@@ -657,8 +647,9 @@ impl Renderer3D {
 
             let ux = xs as usize;
             let uy = ys as usize;
+            let idx = uy * total_sub_cols + ux;
 
-            if ooz > zbuf[uy][ux] {
+            if ooz > zbuf[idx] {
                 // Blinn-Phong Diffuse
                 let diff = (nx2 * lx + ny2 * ly + nz2 * lz).max(0.0);
 
@@ -670,10 +661,10 @@ impl Renderer3D {
 
                 let l = (0.08 + 0.62 * diff + 0.30 * spec).min(1.0);
 
-                zbuf[uy][ux] = ooz;
-                lumbuf[uy][ux] = l;
-                colorbuf[uy][ux] = pt.color.clone();
-                is_outer_buf[uy][ux] = pt.is_outer_side;
+                zbuf[idx] = ooz;
+                lumbuf[idx] = l;
+                colorbuf[idx] = pt.color.as_deref();
+                is_outer_buf[idx] = pt.is_outer_side;
             }
         }
 
@@ -683,7 +674,7 @@ impl Renderer3D {
 
         for row in 0..canvas_rows {
             let mut line = String::with_capacity(canvas_cols * 16);
-            let mut prev_color: Option<String> = None;
+            let mut prev_color: Option<&str> = None;
 
             for col in 0..canvas_cols {
                 let x0 = col * sub_cols;
@@ -694,20 +685,22 @@ impl Renderer3D {
                 let mut n = 0;
                 let mut lsum = 0.0f32;
                 let mut best_z = 0.0f32;
-                let mut cell_color: Option<String> = None;
+                let mut cell_color: Option<&str> = None;
                 let mut cell_is_outer = false;
 
                 for sr in 0..sub_rows {
+                    let row_offset = (y0 + sr) * total_sub_cols;
                     for sc in 0..sub_cols {
-                        let z = zbuf[y0 + sr][x0 + sc];
+                        let idx = row_offset + (x0 + sc);
+                        let z = zbuf[idx];
                         if z > 0.0 {
                             mask |= 1 << bit;
-                            lsum += lumbuf[y0 + sr][x0 + sc];
+                            lsum += lumbuf[idx];
                             n += 1;
                             if z > best_z {
                                 best_z = z;
-                                cell_color = colorbuf[y0 + sr][x0 + sc].clone();
-                                cell_is_outer = is_outer_buf[y0 + sr][x0 + sc];
+                                cell_color = colorbuf[idx];
+                                cell_is_outer = is_outer_buf[idx];
                             }
                         }
                         bit += 1;
@@ -751,15 +744,15 @@ impl Renderer3D {
                 // Color handling: extruded side walls always take outer_color (matching areofyl/fetch);
                 // front/back surfaces take cell_color (e.g. white 'f' in Fedora) or inner_color (white/cyan).
                 let active_color = if cell_is_outer {
-                    self.outer_color.clone()
+                    self.outer_color.as_str()
                 } else if let Some(col) = cell_color {
                     col
                 } else {
-                    self.inner_color.clone()
+                    self.inner_color.as_str()
                 };
 
-                if prev_color.as_deref() != Some(&active_color) {
-                    line.push_str(&active_color);
+                if prev_color != Some(active_color) {
+                    line.push_str(active_color);
                     prev_color = Some(active_color);
                 }
 

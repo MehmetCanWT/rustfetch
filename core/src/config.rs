@@ -1,11 +1,57 @@
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
-#[serde(default)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Config {
     pub general: GeneralConfig,
     pub modules: Vec<ModuleConfig>,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(default)]
+struct ConfigRaw {
+    general: Option<GeneralConfig>,
+    modules: Option<Vec<ModuleConfig>>,
+    border: Option<BorderFieldHelper>,
+    border_image: Option<BorderImageFieldHelper>,
+    border_images: Option<Vec<BorderImageConfig>>,
+    colors: Option<ColorsConfig>,
+    logo: Option<LogoConfig>,
+}
+
+impl<'de> Deserialize<'de> for Config {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = ConfigRaw::deserialize(deserializer)?;
+        let mut general = raw.general.unwrap_or_default();
+
+        if let Some(b) = raw.border {
+            match b {
+                BorderFieldHelper::Bool(en) => general.border = en,
+                BorderFieldHelper::Table(tbl) => apply_border_helper(&mut general, *tbl),
+            }
+        }
+
+        if let Some(bif) = raw.border_image {
+            apply_border_image_helper(&mut general, bif);
+        }
+
+        if let Some(imgs) = raw.border_images {
+            general.border_images = imgs;
+        }
+        if let Some(cols) = raw.colors {
+            general.colors = cols;
+        }
+        if let Some(l) = raw.logo {
+            general.logo = l;
+        }
+
+        let modules = raw.modules.unwrap_or_else(|| Config::default().modules);
+
+        Ok(Config { general, modules })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -60,7 +106,7 @@ impl Default for BorderCharsConfig {
 impl BorderCharsConfig {
     pub fn from_style(style: &str) -> Self {
         match style.to_lowercase().as_str() {
-            "single" => Self {
+            "single" | "light" => Self {
                 top_left: "┌".to_string(),
                 top: "─".to_string(),
                 top_right: "┐".to_string(),
@@ -99,7 +145,7 @@ impl BorderCharsConfig {
                 divider: "━".to_string(),
                 divider_right: "┫".to_string(),
             },
-            "dashed" => Self {
+            "dashed" | "dots" => Self {
                 top_left: "┌".to_string(),
                 top: "╌".to_string(),
                 top_right: "┐".to_string(),
@@ -137,6 +183,19 @@ impl BorderCharsConfig {
                 divider_left: "+".to_string(),
                 divider: "-".to_string(),
                 divider_right: "+".to_string(),
+            },
+            "block" => Self {
+                top_left: "█".to_string(),
+                top: "▀".to_string(),
+                top_right: "█".to_string(),
+                right: "█".to_string(),
+                bottom_right: "█".to_string(),
+                bottom: "▄".to_string(),
+                bottom_left: "█".to_string(),
+                left: "█".to_string(),
+                divider_left: "█".to_string(),
+                divider: "▀".to_string(),
+                divider_right: "█".to_string(),
             },
             _ => Self {
                 top_left: "╭".to_string(),
@@ -200,6 +259,10 @@ pub struct ThreeDConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub frames: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub infinite: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hold: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub exit_on_key: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub outer_color: Option<String>,
@@ -222,6 +285,8 @@ impl Default for ThreeDConfig {
             shading: None,
             light: "top-left".to_string(),
             frames: None,
+            infinite: None,
+            hold: None,
             exit_on_key: Some(true),
             outer_color: None,
             inner_color: None,
@@ -249,8 +314,7 @@ where
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
-#[serde(default)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct GeneralConfig {
     pub separator: String,
     pub padding: usize,
@@ -259,6 +323,9 @@ pub struct GeneralConfig {
     pub icon_only: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub key_type: Option<String>,
+    pub live: bool,
+    #[serde(skip_serializing_if = "Option::is_none", alias = "clear")]
+    pub clear_screen: Option<bool>,
     pub border: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub border_style: Option<String>,
@@ -273,7 +340,30 @@ pub struct GeneralConfig {
     pub border_image: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub border_image_width: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub border_image_height: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub border_image_offset_x: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub border_image_offset_y: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub border_image_z_index: Option<i32>,
     pub border_image_position: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub border_image_protocol: Option<String>,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        alias = "border_image_preserveAspectRatio"
+    )]
+    pub border_image_preserve_aspect_ratio: Option<bool>,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        alias = "border_image_textOnTop",
+        alias = "border_image_text_over"
+    )]
+    pub border_image_text_on_top: Option<bool>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub border_images: Vec<BorderImageConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub gradient: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -282,6 +372,364 @@ pub struct GeneralConfig {
     pub logo: LogoConfig,
     #[serde(alias = "3d", default)]
     pub three_d: Option<bool>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(default)]
+pub struct BorderImageConfig {
+    pub path: String,
+    pub position: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub width: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub height: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub offset_x: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub offset_y: Option<i32>,
+    pub z_index: i32,
+    pub protocol: String,
+    #[serde(default = "default_true", alias = "preserveAspectRatio")]
+    pub preserve_aspect_ratio: bool,
+    #[serde(
+        default = "default_true",
+        alias = "text_over",
+        alias = "textOnTop",
+        alias = "textOver"
+    )]
+    pub text_on_top: bool,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+impl Default for BorderImageConfig {
+    fn default() -> Self {
+        Self {
+            path: String::new(),
+            position: "behind".to_string(),
+            width: None,
+            height: None,
+            offset_x: None,
+            offset_y: None,
+            z_index: -1,
+            protocol: "auto".to_string(),
+            preserve_aspect_ratio: true,
+            text_on_top: true,
+        }
+    }
+}
+
+impl BorderImageConfig {
+    pub fn is_background(&self) -> bool {
+        let pos = self.position.trim().to_ascii_lowercase();
+        pos == "background" || pos == "behind" || pos == "bg"
+    }
+
+    pub fn effective_z_index(&self) -> i32 {
+        if self.text_on_top {
+            -1
+        } else if self.z_index <= 0 {
+            1
+        } else {
+            self.z_index
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Default)]
+#[serde(default)]
+pub struct BorderSectionHelper {
+    #[serde(alias = "border")]
+    pub enabled: Option<bool>,
+    #[serde(alias = "border_style")]
+    pub style: Option<String>,
+    #[serde(alias = "border_color")]
+    pub color: Option<String>,
+    #[serde(alias = "border_title")]
+    pub title: Option<String>,
+    #[serde(alias = "box_padding")]
+    pub padding: Option<usize>,
+    #[serde(alias = "border_chars")]
+    pub chars: Option<BorderCharsConfig>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(untagged)]
+pub enum BorderFieldHelper {
+    Bool(bool),
+    Table(Box<BorderSectionHelper>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Default)]
+#[serde(default)]
+pub struct BorderImageSectionHelper {
+    #[serde(alias = "border_image")]
+    pub path: Option<String>,
+    #[serde(alias = "border_image_position")]
+    pub position: Option<String>,
+    #[serde(alias = "border_image_width")]
+    pub width: Option<usize>,
+    #[serde(alias = "border_image_height")]
+    pub height: Option<usize>,
+    #[serde(alias = "border_image_offset_x")]
+    pub offset_x: Option<i32>,
+    #[serde(alias = "border_image_offset_y")]
+    pub offset_y: Option<i32>,
+    #[serde(alias = "border_image_z_index")]
+    pub z_index: Option<i32>,
+    #[serde(alias = "border_image_protocol")]
+    pub protocol: Option<String>,
+    #[serde(
+        alias = "border_image_preserve_aspect_ratio",
+        alias = "preserve_aspect_ratio",
+        alias = "preserveAspectRatio"
+    )]
+    pub preserve_aspect_ratio: Option<bool>,
+    #[serde(
+        alias = "border_image_text_on_top",
+        alias = "text_on_top",
+        alias = "text_over",
+        alias = "textOnTop",
+        alias = "textOver"
+    )]
+    pub text_on_top: Option<bool>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(untagged)]
+pub enum BorderImageFieldHelper {
+    Path(String),
+    Table(BorderImageSectionHelper),
+}
+
+pub fn apply_border_helper(cfg: &mut GeneralConfig, b: BorderSectionHelper) {
+    if let Some(en) = b.enabled {
+        cfg.border = en;
+    }
+    if let Some(s) = b.style {
+        cfg.border_style = Some(s);
+    }
+    if let Some(c) = b.color {
+        cfg.border_color = Some(c);
+    }
+    if let Some(t) = b.title {
+        cfg.border_title = Some(t);
+    }
+    if let Some(p) = b.padding {
+        cfg.box_padding = p;
+    }
+    if let Some(ch) = b.chars {
+        cfg.border_chars = Some(ch);
+    }
+}
+
+pub fn apply_border_image_helper(cfg: &mut GeneralConfig, bif: BorderImageFieldHelper) {
+    match bif {
+        BorderImageFieldHelper::Path(p) => {
+            if !p.trim().is_empty() {
+                cfg.border_image = Some(p);
+            }
+        }
+        BorderImageFieldHelper::Table(tbl) => {
+            if let Some(p) = tbl.path {
+                if !p.trim().is_empty() {
+                    cfg.border_image = Some(p);
+                }
+            }
+            if let Some(pos) = tbl.position {
+                cfg.border_image_position = pos;
+            }
+            if let Some(w) = tbl.width {
+                cfg.border_image_width = Some(w);
+            }
+            if let Some(h) = tbl.height {
+                cfg.border_image_height = Some(h);
+            }
+            if let Some(ox) = tbl.offset_x {
+                cfg.border_image_offset_x = Some(ox);
+            }
+            if let Some(oy) = tbl.offset_y {
+                cfg.border_image_offset_y = Some(oy);
+            }
+            if let Some(zi) = tbl.z_index {
+                cfg.border_image_z_index = Some(zi);
+            }
+            if let Some(pr) = tbl.protocol {
+                cfg.border_image_protocol = Some(pr);
+            }
+            if let Some(par) = tbl.preserve_aspect_ratio {
+                cfg.border_image_preserve_aspect_ratio = Some(par);
+            }
+            if let Some(tot) = tbl.text_on_top {
+                cfg.border_image_text_on_top = Some(tot);
+            }
+        }
+    }
+}
+
+#[derive(Deserialize, Default)]
+#[serde(default)]
+struct GeneralConfigRaw {
+    separator: Option<String>,
+    padding: Option<usize>,
+    center: Option<bool>,
+    icons: Option<bool>,
+    icon_only: Option<bool>,
+    key_type: Option<String>,
+    live: Option<bool>,
+    #[serde(alias = "clear")]
+    clear_screen: Option<bool>,
+
+    border: Option<BorderFieldHelper>,
+    border_style: Option<String>,
+    border_color: Option<String>,
+    border_chars: Option<BorderCharsConfig>,
+    border_title: Option<String>,
+    box_padding: Option<usize>,
+
+    border_image: Option<BorderImageFieldHelper>,
+    border_image_width: Option<usize>,
+    border_image_height: Option<usize>,
+    border_image_offset_x: Option<i32>,
+    border_image_offset_y: Option<i32>,
+    border_image_z_index: Option<i32>,
+    border_image_position: Option<String>,
+    border_image_protocol: Option<String>,
+    #[serde(
+        alias = "border_image_preserveAspectRatio",
+        alias = "border_image_preserve_aspect_ratio"
+    )]
+    border_image_preserve_aspect_ratio: Option<bool>,
+    #[serde(
+        alias = "border_image_textOnTop",
+        alias = "border_image_text_on_top",
+        alias = "border_image_text_over",
+        alias = "border_image_textOver"
+    )]
+    border_image_text_on_top: Option<bool>,
+
+    border_images: Option<Vec<BorderImageConfig>>,
+    gradient: Option<Vec<String>>,
+    theme: Option<String>,
+    colors: Option<ColorsConfig>,
+    logo: Option<LogoConfig>,
+    #[serde(alias = "3d")]
+    three_d: Option<bool>,
+}
+
+impl<'de> Deserialize<'de> for GeneralConfig {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = GeneralConfigRaw::deserialize(deserializer)?;
+        let mut cfg = GeneralConfig::default();
+
+        if let Some(v) = raw.separator {
+            cfg.separator = v;
+        }
+        if let Some(v) = raw.padding {
+            cfg.padding = v;
+        }
+        if let Some(v) = raw.center {
+            cfg.center = v;
+        }
+        if let Some(v) = raw.icons {
+            cfg.icons = v;
+        }
+        if let Some(v) = raw.icon_only {
+            cfg.icon_only = v;
+        }
+        if let Some(v) = raw.key_type {
+            cfg.key_type = Some(v);
+        }
+        if let Some(v) = raw.live {
+            cfg.live = v;
+        }
+        if let Some(cs) = raw.clear_screen {
+            cfg.clear_screen = Some(cs);
+        }
+
+        if let Some(bf) = raw.border {
+            match bf {
+                BorderFieldHelper::Bool(b) => {
+                    cfg.border = b;
+                }
+                BorderFieldHelper::Table(tbl) => {
+                    apply_border_helper(&mut cfg, *tbl);
+                }
+            }
+        }
+        if let Some(s) = raw.border_style {
+            cfg.border_style = Some(s);
+        }
+        if let Some(c) = raw.border_color {
+            cfg.border_color = Some(c);
+        }
+        if let Some(ch) = raw.border_chars {
+            cfg.border_chars = Some(ch);
+        }
+        if let Some(t) = raw.border_title {
+            cfg.border_title = Some(t);
+        }
+        if let Some(p) = raw.box_padding {
+            cfg.box_padding = p;
+        }
+
+        if let Some(bif) = raw.border_image {
+            apply_border_image_helper(&mut cfg, bif);
+        }
+        if let Some(pos) = raw.border_image_position {
+            cfg.border_image_position = pos;
+        }
+        if let Some(w) = raw.border_image_width {
+            cfg.border_image_width = Some(w);
+        }
+        if let Some(h) = raw.border_image_height {
+            cfg.border_image_height = Some(h);
+        }
+        if let Some(ox) = raw.border_image_offset_x {
+            cfg.border_image_offset_x = Some(ox);
+        }
+        if let Some(oy) = raw.border_image_offset_y {
+            cfg.border_image_offset_y = Some(oy);
+        }
+        if let Some(zi) = raw.border_image_z_index {
+            cfg.border_image_z_index = Some(zi);
+        }
+        if let Some(pr) = raw.border_image_protocol {
+            cfg.border_image_protocol = Some(pr);
+        }
+        if let Some(par) = raw.border_image_preserve_aspect_ratio {
+            cfg.border_image_preserve_aspect_ratio = Some(par);
+        }
+        if let Some(tot) = raw.border_image_text_on_top {
+            cfg.border_image_text_on_top = Some(tot);
+        }
+
+        if let Some(images) = raw.border_images {
+            cfg.border_images = images;
+        }
+        if let Some(g) = raw.gradient {
+            cfg.gradient = Some(g);
+        }
+        if let Some(t) = raw.theme {
+            cfg.theme = Some(t);
+        }
+        if let Some(c) = raw.colors {
+            cfg.colors = c;
+        }
+        if let Some(l) = raw.logo {
+            cfg.logo = l;
+        }
+        if let Some(td) = raw.three_d {
+            cfg.three_d = Some(td);
+        }
+
+        Ok(cfg)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
@@ -296,6 +744,8 @@ pub struct AnimationConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub frames: Option<usize>,
     pub infinite: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hold: Option<bool>,
 }
 
 impl Default for AnimationConfig {
@@ -307,6 +757,7 @@ impl Default for AnimationConfig {
             exit_on_key: Some(true),
             frames: None,
             infinite: true,
+            hold: None,
         }
     }
 }
@@ -316,6 +767,8 @@ impl Default for AnimationConfig {
 pub struct LogoConfig {
     pub enabled: bool,
     pub distro: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub position: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none", alias = "ascii")]
     pub ascii_path: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -367,6 +820,7 @@ impl Default for LogoConfig {
         Self {
             enabled: true,
             distro: "auto".to_string(),
+            position: None,
             ascii_path: None,
             colors: None,
             image_path: None,
@@ -390,6 +844,8 @@ impl Default for GeneralConfig {
             icons: true,
             icon_only: false,
             key_type: None,
+            live: false,
+            clear_screen: None,
             border: false,
             border_style: None,
             border_color: None,
@@ -398,13 +854,52 @@ impl Default for GeneralConfig {
             box_padding: 1,
             border_image: None,
             border_image_width: None,
-            border_image_position: "left".to_string(),
+            border_image_height: None,
+            border_image_offset_x: None,
+            border_image_offset_y: None,
+            border_image_z_index: None,
+            border_image_position: "behind".to_string(),
+            border_image_protocol: None,
+            border_image_preserve_aspect_ratio: None,
+            border_image_text_on_top: None,
+            border_images: Vec::new(),
             gradient: None,
             theme: None,
             colors: ColorsConfig::default(),
             logo: LogoConfig::default(),
             three_d: None,
         }
+    }
+}
+
+impl GeneralConfig {
+    pub fn active_border_images(&self) -> Vec<BorderImageConfig> {
+        let mut list = Vec::new();
+        if let Some(path) = &self.border_image {
+            if !path.trim().is_empty() {
+                list.push(BorderImageConfig {
+                    path: path.clone(),
+                    position: self.border_image_position.clone(),
+                    width: self.border_image_width,
+                    height: self.border_image_height,
+                    offset_x: self.border_image_offset_x,
+                    offset_y: self.border_image_offset_y,
+                    z_index: self.border_image_z_index.unwrap_or(-1),
+                    protocol: self
+                        .border_image_protocol
+                        .clone()
+                        .unwrap_or_else(|| "auto".to_string()),
+                    preserve_aspect_ratio: self.border_image_preserve_aspect_ratio.unwrap_or(true),
+                    text_on_top: self.border_image_text_on_top.unwrap_or(true),
+                });
+            }
+        }
+        for img in &self.border_images {
+            if !img.path.trim().is_empty() {
+                list.push(img.clone());
+            }
+        }
+        list
     }
 }
 
@@ -509,6 +1004,8 @@ pub fn default_icon_for_module(name: &str) -> Option<&'static str> {
         "display" => Some("󰍹"),
         "wifi" => Some("󰖩"),
         "processes" => Some("󰒋"),
+        "init" | "initsystem" => Some(""),
+        "container" | "vm" => Some("󰡨"),
         "custom" => Some("󰅐"),
         _ => None,
     }
@@ -826,8 +1323,25 @@ impl Config {
     pub fn load_from(path: &Path) -> Result<Self, String> {
         let content = std::fs::read_to_string(path)
             .map_err(|e| format!("Failed to read config file '{}': {}", path.display(), e))?;
-        Self::from_toml(&content)
-            .map_err(|e| format!("Failed to parse config file '{}': {}", path.display(), e))
+        if path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .is_some_and(|ext| ext == "json" || ext == "jsonc")
+        {
+            if let Some(cfg) = Self::import_from_fastfetch(&content) {
+                return Ok(cfg);
+            }
+        }
+        Self::from_toml(&content).or_else(|toml_err| {
+            if let Some(cfg) = Self::import_from_fastfetch(&content) {
+                Ok(cfg)
+            } else {
+                Err(format!(
+                    "Failed to parse config file '{}': {toml_err}",
+                    path.display()
+                ))
+            }
+        })
     }
 
     pub fn from_toml(content: &str) -> Result<Self, toml::de::Error> {
@@ -835,8 +1349,316 @@ impl Config {
     }
 
     pub fn to_default_toml() -> String {
-        toml::to_string_pretty(&Self::default())
-            .expect("default config must be serializable to TOML")
+        r##"# ==============================================================================
+# RustFetch Configuration (config.toml)
+# ==============================================================================
+# Blazing-fast, highly customizable system information tool written in Rust.
+# Edit this file to customize layout, borders, overlays, colors, and modules.
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 1. General Display & Layout
+# ------------------------------------------------------------------------------
+[general]
+# Separator between module labels and values (e.g. ":", ": ", "  ", " ")
+separator = ":"
+
+# Spaces between separator and value
+padding = 1
+
+# Center output horizontally in terminal
+center = false
+
+# Enable/disable Nerd Font icons next to module labels
+icons = true
+
+# Display only icons and values (hide module label text)
+icon_only = false
+
+# Run in live interactive system monitor mode (continuous refresh)
+live = false
+
+# Preset theme: "catppuccin", "nord", "dracula", "gruvbox", "tokyonight", "rosepine", "solarized", "monokai", "cyberpunk"
+# theme = "catppuccin"
+
+# Multi-stop color gradient for text and borders (list of hex codes)
+# gradient = ["#89b4fa", "#b4befe", "#cba6f7"]
+
+# ------------------------------------------------------------------------------
+# 2. Border & Box Frame
+# ------------------------------------------------------------------------------
+[general.border]
+# Enable or disable the outer border box
+enabled = false
+
+# Border frame style: "rounded", "single", "double", "thick", "dashed", "block", "ascii", "brackets"
+# style = "rounded"
+
+# Border color: color name ("cyan", "red", "green", "blue", "magenta", "yellow") or hex ("#89b4fa")
+# color = "cyan"
+
+# Optional title displayed in the top border frame
+# title = "RustFetch"
+
+# Padding (in spaces) between border frame and content
+padding = 1
+
+# Custom border characters (overrides style if set)
+# [general.border.chars]
+# top_left = "╭"
+# top = "─"
+# top_right = "╮"
+# right = "│"
+# bottom_right = "╯"
+# bottom = "─"
+# bottom_left = "╰"
+# left = "│"
+# divider_left = "├"
+# divider = "─"
+# divider_right = "┤"
+
+# ------------------------------------------------------------------------------
+# 3. Border Image & Background Overlays
+# ------------------------------------------------------------------------------
+[general.border_image]
+# Position options: "behind", "background", "left", "right", "top", "bottom"
+# Default is "behind" (render image as background backdrop)
+position = "behind"
+
+# Overlay an image behind or alongside the fetch layout
+# Supported protocols: "auto", "kitty", "sixel", "iterm", "halfblocks"
+# path = "~/.config/rustfetch/background.png"
+# width = 30
+# height = 18
+# offset_x = 0
+# offset_y = 0
+# z_index = -1
+# protocol = "auto"
+
+# Multiple layered border images (optional)
+# [[general.border_images]]
+# path = "~/.config/rustfetch/badge.png"
+# position = "right"
+# width = 20
+# height = 10
+# offset_x = 0
+# offset_y = 0
+# z_index = 1
+# protocol = "auto"
+
+# ------------------------------------------------------------------------------
+# 4. Color Palette Bar
+# ------------------------------------------------------------------------------
+[general.colors]
+# Display color test dots/blocks at bottom or top of output
+enabled = true
+
+# Character used for color blocks (e.g. "●", "■", "󰝤", "")
+symbol = "●"
+
+# Use solid colored rectangular blocks instead of symbols
+block = false
+
+# Extract color palette automatically from image logo when image mode is used
+image_palette = true
+
+# Position of the palette: "bottom", "top", "none"
+position = "bottom"
+
+# Number of rows (1 or 2 rows; 2 rows displays standard + bright colors)
+rows = 1
+
+# Custom color palette override (hex codes or ANSI color names)
+# custom = ["#1e1e2e", "#f38ba8", "#a6e3a1", "#f9e2af", "#89b4fa", "#cba6f7", "#94e2d5", "#cdd6f4"]
+
+# ------------------------------------------------------------------------------
+# 5. Logo & Visual Artwork
+# ------------------------------------------------------------------------------
+[general.logo]
+# Enable or disable logo display
+enabled = true
+
+# Logo placement: "left" (default), "right", "top", "bottom", "behind", "hidden"
+# position = "left"
+
+# OS distro logo to display ("auto" detects current OS, or e.g. "arch", "ubuntu", "fedora", "nixos")
+distro = "auto"
+
+# Custom ASCII logo file path (overrides built-in distro art)
+# ascii_path = "~/.config/rustfetch/ascii_logo.txt"
+
+# Custom colors for multi-color ASCII logos (e.g. ["blue", "white"])
+# colors = ["blue", "white"]
+
+# Image logo file path (PNG, JPG, WebP)
+# image_path = "~/.config/rustfetch/logo.png"
+
+# Directory to randomly pick an image logo from on each launch
+# image_dir = "~/.config/rustfetch/logos"
+
+# Width of image logo in terminal columns
+image_width_cols = 42
+
+# Randomly select image from image_dir
+random_image = false
+
+# Automatically adapt primary theme colors to match dominant image colors
+auto_color = true
+
+# Terminal graphics protocol: "auto", "kitty", "sixel", "iterm", "halfblocks"
+protocol = "auto"
+
+# ------------------------------------------------------------------------------
+# 6. 3D Spinning ASCII Relief Logo
+# ------------------------------------------------------------------------------
+[general.logo.three_d]
+# Enable real-time animated 3D ASCII relief logo
+enabled = false
+
+# Rotation speed multiplier (default: 1.0)
+speed = 1.0
+
+# Enable rotation around X axis (pitch / wobble)
+rotate_x = true
+
+# Enable rotation around Y axis (horizontal yaw spin)
+rotate_y = true
+
+# Model size scaling factor
+size = 1.0
+
+# 3D depth extrusion factor
+depth = 1.0
+
+# Canvas dimensions in characters
+width = 42
+height = 24
+
+# Shading mode: "ascii", "dot", "wireframe", "solid", "halfblock", "braille"
+shading_mode = "ascii"
+
+# Custom shading characters from darkest to brightest (default: " .:-=+*#%@")
+# shading = " .:-=+*#%@"
+
+# Simulated directional light source: "top-left", "top-right", "front", "top"
+light = "top-left"
+
+# Stop animation after N frames (default: None = run indefinitely)
+# frames = 120
+
+# Loop animation indefinitely
+# infinite = true
+
+# Hold terminal open and keep animating until Ctrl+C / 'q' (disables exit-on-key)
+# hold = false
+
+# Automatically exit animation on any keypress (perfect for instant shell access)
+exit_on_key = true
+
+# Custom outer and inner colors for 3D model (hex or color name)
+# outer_color = "#89b4fa"
+# inner_color = "#cdd6f4"
+
+# ------------------------------------------------------------------------------
+# 7. Multi-frame ASCII Animation
+# ------------------------------------------------------------------------------
+[general.logo.animation]
+# Enable multi-frame ASCII animation
+enabled = false
+
+# Path to multi-frame ASCII animation text file (delimited by '---' or form-feed)
+# path = "~/.config/rustfetch/anim.txt"
+
+# Frames per second (FPS)
+fps = 15.0
+
+# Exit animation on any keypress
+exit_on_key = true
+
+# Loop animation indefinitely
+infinite = true
+
+# Hold animation open until Ctrl+C / 'q'
+# hold = false
+
+# Stop animation after N frames
+# frames = 60
+
+# ==============================================================================
+# 8. Information Modules
+# ==============================================================================
+# Configure which modules are shown, their order, custom labels, icons, and formats.
+#
+# Available modules:
+#   os, host, board, kernel, uptime, packages, shell, desktop, font,
+#   terminal, cpu, cpu_usage, temp, gpu, memory, swap, disk, battery,
+#   brightness, display, sound, wifi, local_ip, locale, processes, media,
+#   break (blank spacer line), divider (horizontal rule), custom
+#
+# Optional per-module fields:
+#   label     - Custom display label text (or "" to hide label)
+#   icon      - Custom Nerd Font icon
+#   color     - Module label color (hex or ANSI name)
+#   format    - Value template (e.g. "{value}", "{}")
+#   bar       - true/false: display percentage progress bar
+#   bar_width - Width of progress bar in characters (default: 10)
+#   value     - Static text value (for name = "custom")
+
+[[modules]]
+name = "os"
+
+[[modules]]
+name = "host"
+
+[[modules]]
+name = "board"
+
+[[modules]]
+name = "kernel"
+
+[[modules]]
+name = "uptime"
+
+[[modules]]
+name = "packages"
+
+[[modules]]
+name = "shell"
+
+[[modules]]
+name = "desktop"
+
+[[modules]]
+name = "font"
+
+[[modules]]
+name = "terminal"
+
+[[modules]]
+name = "cpu"
+
+[[modules]]
+name = "gpu"
+
+[[modules]]
+name = "memory"
+
+[[modules]]
+name = "swap"
+
+[[modules]]
+name = "disk"
+
+[[modules]]
+name = "battery"
+
+[[modules]]
+name = "local_ip"
+
+[[modules]]
+name = "locale"
+"##
+        .to_string()
     }
 
     pub fn to_toml_string(&self) -> Result<String, toml::ser::Error> {
@@ -850,7 +1672,11 @@ impl Config {
         let mut config = Self::default();
 
         if let Some(sep) = val.pointer("/display/separator").and_then(|s| s.as_str()) {
-            config.general.separator = sep.trim_end().to_string();
+            if sep == " " {
+                config.general.separator = " ".to_string();
+            } else {
+                config.general.separator = sep.trim_end().to_string();
+            }
         }
 
         if let Some(pad) = val
@@ -865,6 +1691,8 @@ impl Config {
             if let Some(ltype) = logo.get("type").and_then(|t| t.as_str()) {
                 if ltype == "none" {
                     config.general.logo.enabled = false;
+                } else if ltype == "kitty" {
+                    config.general.logo.protocol = "kitty".to_string();
                 }
             }
 
@@ -886,8 +1714,11 @@ impl Config {
 
             if let Some(src) = logo.get("source").and_then(|s| s.as_str()) {
                 if !src.is_empty() {
+                    let is_file_type = logo.get("type").and_then(|t| t.as_str()) == Some("file");
                     let path = PathBuf::from(src);
-                    if let Some(parent) = path.parent() {
+                    if is_file_type {
+                        config.general.logo.ascii_path = Some(src.to_string());
+                    } else if let Some(parent) = path.parent() {
                         let parent_str = parent.to_string_lossy();
                         if parent_str.ends_with("/logos") || parent_str.contains("/logos/") {
                             config.general.logo.image_dir = Some(parent_str.to_string());
@@ -932,11 +1763,25 @@ impl Config {
                                 center_detected = true;
                             }
                         }
+                        let mut mc = ModuleConfig::new("custom");
+                        if let Some(key) = mod_obj.get("key").and_then(|k| k.as_str()) {
+                            mc.label = Some(key.to_string());
+                        }
+                        if let Some(fmt) = mod_obj.get("format").and_then(|f| f.as_str()) {
+                            mc.value = Some(fmt.to_string());
+                        }
+                        if mc.label.is_some() || mc.value.is_some() {
+                            converted.push(mc);
+                        }
                         continue;
                     }
 
                     if let Some(mapped_name) = map_fastfetch_type(mod_type) {
-                        if seen.insert(mapped_name) {
+                        let allow_multiple = matches!(
+                            mapped_name,
+                            "break" | "custom" | "divider" | "packages" | "gpu" | "disk"
+                        );
+                        if allow_multiple || seen.insert(mapped_name) {
                             let mut mc = ModuleConfig::new(mapped_name);
                             if let Some(icon) = mod_obj.get("keyIcon").and_then(|i| i.as_str()) {
                                 if !icon.trim().is_empty() {
@@ -948,12 +1793,22 @@ impl Config {
                                     mc.label = Some(key.to_string());
                                 }
                             }
+                            if let Some(color) = mod_obj.get("keyColor").and_then(|c| c.as_str()) {
+                                mc.color = Some(color.to_string());
+                            }
+                            if let Some(fmt) = mod_obj.get("format").and_then(|f| f.as_str()) {
+                                mc.format = Some(fmt.to_string());
+                            }
                             converted.push(mc);
                         }
                     }
                 } else if let Some(mod_name) = item.as_str() {
                     if let Some(mapped_name) = map_fastfetch_type(mod_name) {
-                        if seen.insert(mapped_name) {
+                        let allow_multiple = matches!(
+                            mapped_name,
+                            "break" | "custom" | "divider" | "packages" | "gpu" | "disk"
+                        );
+                        if allow_multiple || seen.insert(mapped_name) {
                             converted.push(ModuleConfig::new(mapped_name));
                         }
                     }
@@ -980,10 +1835,11 @@ fn map_fastfetch_type(ff_type: &str) -> Option<&'static str> {
         "uptime" => Some("uptime"),
         "packages" => Some("packages"),
         "shell" => Some("shell"),
-        "de" | "wm" => Some("desktop"),
+        "de" | "wm" | "theme" | "wmtheme" | "icons" | "cursor" => Some("desktop"),
         "font" | "terminalfont" => Some("font"),
         "terminal" => Some("terminal"),
         "cpu" => Some("cpu"),
+        "cpu_usage" | "cpuusage" => Some("cpu_usage"),
         "gpu" => Some("gpu"),
         "memory" => Some("memory"),
         "swap" => Some("swap"),
@@ -991,6 +1847,17 @@ fn map_fastfetch_type(ff_type: &str) -> Option<&'static str> {
         "battery" | "poweradapter" => Some("battery"),
         "localip" | "local_ip" => Some("local_ip"),
         "locale" => Some("locale"),
+        "break" | "divider" | "separator" => Some("break"),
+        "custom" => Some("custom"),
+        "media" | "player" => Some("media"),
+        "sound" | "audio" => Some("sound"),
+        "wifi" => Some("wifi"),
+        "bluetooth" => Some("bluetooth"),
+        "brightness" => Some("brightness"),
+        "processes" => Some("processes"),
+        "temp" | "temperature" => Some("temp"),
+        "init" | "initsystem" => Some("init"),
+        "container" | "vm" => Some("container"),
         _ => None,
     }
 }
@@ -1361,8 +2228,11 @@ separator = 12345
         );
 
         let mod_names: Vec<&str> = config.modules.iter().map(|m| m.name.as_str()).collect();
-        // de and wm should be deduplicated to a single desktop module
-        assert_eq!(mod_names, vec!["os", "cpu", "desktop", "local_ip"]);
+        // custom and break preserved, de and wm deduplicated to a single desktop module
+        assert_eq!(
+            mod_names,
+            vec!["custom", "break", "os", "cpu", "desktop", "local_ip"]
+        );
 
         let os_mod = config.modules.iter().find(|m| m.name == "os").unwrap();
         assert_eq!(os_mod.icon.as_deref(), Some(""));
@@ -1462,5 +2332,133 @@ separator = 12345
         "#;
         let cfg3: Config = toml::from_str(toml_gen).unwrap();
         assert_eq!(cfg3.general.three_d, Some(true));
+    }
+
+    #[test]
+    fn test_border_images_config_and_active_list() {
+        let toml_str = r#"
+        [general]
+        border_image = "legacy_border.png"
+        border_image_width = 30
+        border_image_position = "left"
+
+        [[general.border_images]]
+        path = "card_backdrop.png"
+        position = "background"
+        width = 50
+        height = 20
+        offset_x = 2
+        offset_y = -1
+        z_index = -1
+        protocol = "kitty"
+
+        [[general.border_images]]
+        path = "side_ornament.png"
+        position = "right"
+        "#;
+
+        let cfg: Config = toml::from_str(toml_str).unwrap();
+        let active = cfg.general.active_border_images();
+        assert_eq!(active.len(), 3);
+
+        // Legacy image normalized
+        assert_eq!(active[0].path, "legacy_border.png");
+        assert_eq!(active[0].position, "left");
+        assert_eq!(active[0].width, Some(30));
+        assert!(!active[0].is_background());
+
+        // Multi-image 1 (background)
+        assert_eq!(active[1].path, "card_backdrop.png");
+        assert_eq!(active[1].position, "background");
+        assert_eq!(active[1].width, Some(50));
+        assert_eq!(active[1].height, Some(20));
+        assert_eq!(active[1].offset_x, Some(2));
+        assert_eq!(active[1].offset_y, Some(-1));
+        assert_eq!(active[1].z_index, -1);
+        assert_eq!(active[1].protocol, "kitty");
+        assert!(active[1].is_background());
+
+        // Multi-image 2 (right)
+        assert_eq!(active[2].path, "side_ornament.png");
+        assert_eq!(active[2].position, "right");
+        assert_eq!(active[2].z_index, -1);
+        assert!(!active[2].is_background());
+    }
+
+    #[test]
+    fn test_grouped_border_and_border_image_tables() {
+        let toml_str = r#"
+        [general]
+        separator = " => "
+
+        [general.border]
+        enabled = true
+        style = "double"
+        color = "magenta"
+        title = "MyBox"
+        padding = 2
+
+        [general.border_image]
+        path = "wallpaper.png"
+        position = "behind"
+        width = 40
+        height = 20
+        offset_x = 1
+        offset_y = 2
+        z_index = -2
+        protocol = "sixel"
+        "#;
+
+        let cfg: Config = toml::from_str(toml_str).unwrap();
+        assert_eq!(cfg.general.separator, " => ");
+        assert!(cfg.general.border);
+        assert_eq!(cfg.general.border_style.as_deref(), Some("double"));
+        assert_eq!(cfg.general.border_color.as_deref(), Some("magenta"));
+        assert_eq!(cfg.general.border_title.as_deref(), Some("MyBox"));
+        assert_eq!(cfg.general.box_padding, 2);
+
+        assert_eq!(cfg.general.border_image.as_deref(), Some("wallpaper.png"));
+        assert_eq!(cfg.general.border_image_position, "behind");
+        assert_eq!(cfg.general.border_image_width, Some(40));
+        assert_eq!(cfg.general.border_image_height, Some(20));
+        assert_eq!(cfg.general.border_image_offset_x, Some(1));
+        assert_eq!(cfg.general.border_image_offset_y, Some(2));
+        assert_eq!(cfg.general.border_image_z_index, Some(-2));
+        assert_eq!(cfg.general.border_image_protocol.as_deref(), Some("sixel"));
+
+        let active = cfg.general.active_border_images();
+        assert_eq!(active.len(), 1);
+        assert!(active[0].is_background());
+    }
+
+    #[test]
+    fn test_top_level_border_and_border_image_tables() {
+        let toml_str = r#"
+        [general]
+        padding = 3
+
+        [border]
+        enabled = true
+        style = "thick"
+
+        [border_image]
+        path = "bg.png"
+        "#;
+
+        let cfg: Config = toml::from_str(toml_str).unwrap();
+        assert_eq!(cfg.general.padding, 3);
+        assert!(cfg.general.border);
+        assert_eq!(cfg.general.border_style.as_deref(), Some("thick"));
+        assert_eq!(cfg.general.border_image.as_deref(), Some("bg.png"));
+        assert_eq!(cfg.general.border_image_position, "behind");
+    }
+
+    #[test]
+    fn test_border_image_default_position_is_behind() {
+        let cfg = Config::default();
+        assert_eq!(cfg.general.border_image_position, "behind");
+        let bi = BorderImageConfig::default();
+        assert_eq!(bi.position, "behind");
+        assert!(bi.is_background());
     }
 }

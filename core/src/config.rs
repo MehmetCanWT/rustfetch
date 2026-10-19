@@ -854,7 +854,7 @@ pub fn distro_icon(distro_name: &str) -> &'static str {
         "󰣇"
     } else if lower.contains("ubuntu") {
         "󰕈"
-    } else if lower.contains("fedora") {
+    } else if lower.contains("fedora") || lower.contains("bazzite") || lower.contains("nobara") {
         "󰣛"
     } else if lower.contains("debian") {
         "󰣚"

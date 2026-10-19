@@ -54,6 +54,7 @@ pub const GARUDA_ORANGE: &str = "\x1b[38;2;240;80;35m";
 pub const GARUDA_YELLOW: &str = "\x1b[38;2;255;170;0m";
 pub const NOBARA_WHITE: &str = "\x1b[38;2;255;255;255m";
 pub const ARCHCRAFT_TEAL: &str = "\x1b[38;2;94;178;167m";
+pub const BAZZITE_PURPLE: &str = "\x1b[38;2;138;79;255m"; // #8a4fff
 
 /// A terminal-printable ASCII logo.
 #[derive(Debug, Clone)]
@@ -179,6 +180,11 @@ pub fn get_logo(distro: &str) -> Logo {
         garuda()
     } else if lower.contains("nobara") {
         nobara()
+    } else if lower.contains("bazzite") {
+        let mut logo = fedora();
+        logo.color = BAZZITE_PURPLE;
+        logo.colors = vec![BAZZITE_PURPLE, WHITE];
+        logo
     } else if lower.contains("darwin") || lower.contains("macos") || lower.contains("apple") {
         macos()
     } else if lower.contains("windows") {

@@ -25,7 +25,7 @@ rustfetch (cli/)  ──┬──► rustfetch-core (core/)
 | `config.toml` | Örnek/referans kullanıcı yapılandırma dosyası. | `core/src/config.rs` (`Config::to_default_toml`) ile uyumlu şema. |
 | `scripts/test.sh` | Tam doğrulama betiği: `cargo fmt --check`, `cargo test --workspace`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo build --workspace --release` ve `scripts/test-cli.sh`. | CI ve yerel doğrulama. |
 | `scripts/test-cli.sh` | Derlenen `rustfetch` ve `rfetch` ikilileri üzerinde uçtan uca CLI bayrak/preset/JSON/config duman testleri. | `target/release/rustfetch`, `target/release/rfetch`. |
-| `scripts/install.sh` / `Makefile` / `flake.nix` / `packaging/` | Kurulum, paketleme (AUR, deb, rpm, Nix) ve tamamlama/man dosyalarının kurulumu. | `cli/` ikilileri ve `completions/`, `man/`. |
+| `install.sh` / `Makefile` / `flake.nix` / `packaging/` | Kurulum (Bazzite `rpm-ostree` + Homebrew `brew` + `rustup` dahil), paketleme (AUR, deb, rpm, Nix) ve tamamlama/man dosyalarının kurulumu. | `cli/` ikilileri ve `completions/`, `man/`. |
 | `images/` | Test ve varsayılan görsel varlıkları (örn. `images/arch.png`). | `render/src/image.rs` ve `cli/src/layout.rs` birim testleri. |
 
 ---
@@ -42,7 +42,7 @@ rustfetch (cli/)  ──┬──► rustfetch-core (core/)
 - **Kim Kullanır**: `cli/src/lib.rs`, `cli/src/layout.rs`, `cli/src/logos.rs`.
 
 ### `core/src/config.rs`
-- **Görevi**: Tüm TOML yapılandırma şeması, Fastfetch JSON/JSONC içe aktarıcı (`import_from_fastfetch`, `strip_jsonc`), preset profiller (`Config::from_preset`), varsayılan modül ikonları (`default_icon_for_module`, `distro_icon`) ve kenarlık karakter setleri (`BorderCharsConfig::from_style`).
+- **Görevi**: Tüm TOML yapılandırma şeması, Fastfetch JSON/JSONC içe aktarıcı (`import_from_fastfetch`, `strip_jsonc`), preset profiller (`Config::from_preset`), varsayılan modül ikonları (`default_icon_for_module`, `distro_icon` — Fedora/Bazzite/Nobara dahil) ve kenarlık karakter setleri (`BorderCharsConfig::from_style`).
 - **Önemli Yapılar ve Fonksiyonlar**:
   - `Config`: `{ general: GeneralConfig, modules: Vec<ModuleConfig> }`
     - `Config::load()` -> `~/.config/rustfetch/config.toml` (veya `XDG_CONFIG_HOME`) okur; yoksa Fastfetch yapılandırmasını (`find_fastfetch_config`) içe aktarır veya `Config::default()` yazar.
@@ -83,7 +83,7 @@ rustfetch (cli/)  ──┬──► rustfetch-core (core/)
   - `board.rs` (`BoardModule`): `/sys/class/dmi/id/board_{vendor,name,version}` (`/sys/devices/virtual/dmi/id/` fallback ile `host::parse_host` kullanır).
   - `kernel.rs` (`KernelModule`): `/proc/sys/kernel/osrelease`.
   - `uptime.rs` (`UptimeModule`): `/proc/uptime`.
-  - `packages.rs` (`PackagesModule`, `is_slow = true`): `pacman`, `dpkg`, `rpm`, `xbps`, `apk`, `flatpak`, `snap` paket sayılarını toplar.
+  - `packages.rs` (`PackagesModule`, `is_slow = true`): `pacman`, `dpkg`, `rpm`, `xbps`, `apk`, `emerge`, `nix`, `flatpak`, `snap`, `brew` (Linuxbrew/Bazzite) paket sayılarını toplar.
   - `shell.rs` (`ShellModule`): `$SHELL` + sürüm bayrağı.
   - `desktop.rs` (`DesktopModule`): `$XDG_CURRENT_DESKTOP` / `$DESKTOP_SESSION` + Wayland/X11 protokolü.
   - `font.rs` (`FontModule`): GTK3/GTK4/gsettings/Xresources yazı tipi tespiti.
@@ -193,7 +193,7 @@ rustfetch (cli/)  ──┬──► rustfetch-core (core/)
   - `strip_ansi(s)`, `strip_ansi_width(s)`, `truncate_ansi(s, max_cols)`.
 
 ### `cli/src/logos.rs`
-- **Görevi**: 25+ Linux/BSD/macOS/Windows dağıtımı için gömülü büyük ve küçük (`_small`) ASCII logo şablonları.
+- **Görevi**: 25+ Linux/BSD/macOS/Windows dağıtımı (Bazzite dahil) için gömülü büyük ve küçük (`_small`) ASCII logo şablonları.
 - **Fonksiyonlar**:
   - `get_logo(distro)` -> Büyük `AsciiLogo` döndürür.
   - `get_small_logo(distro)` -> Küçük `AsciiLogo` döndürür (terminal dar olduğunda `resolve_distro_logo` tarafından seçilir).

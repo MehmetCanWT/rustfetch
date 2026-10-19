@@ -22,7 +22,12 @@ NC='\033[0m'
 
 echo -e "${BLUE}==>${NC} Installing ${GREEN}RustFetch${NC}..."
 
-# 0. Ensure Cargo environment is loaded if available
+# 0. Ensure Homebrew (Bazzite) and Cargo environments are loaded if available
+for dir in "/home/linuxbrew/.linuxbrew/bin" "$HOME/.cargo/bin" "$HOME/.local/bin"; do
+    if [ -d "$dir" ] && [[ ":$PATH:" != *":$dir:"* ]]; then
+        export PATH="$dir:$PATH"
+    fi
+done
 if ! command -v cargo &>/dev/null && [ -f "$HOME/.cargo/env" ]; then
     . "$HOME/.cargo/env"
 fi
@@ -59,30 +64,25 @@ trap 'rm -rf "$TEMP_DIR"' EXIT
 
 INSTALLED_FROM_BINARY=false
 
-# 2. Compile binary
-if [ -f "Cargo.toml" ] && grep -q "rustfetch" Cargo.toml; then
-    BUILD_DIR="$(pwd)"
-    echo -e "${BLUE}==>${NC} Compiling local release binary (LTO optimized)..."
-    cargo build --release -p rustfetch
-else
-    echo -e "${BLUE}==>${NC} Preparing RustFetch installation..."
-
-    if ! command -v cargo &>/dev/null; then
-        if [ -f "$HOME/.cargo/env" ]; then
-            . "$HOME/.cargo/env"
-        fi
-    fi
-
+ensure_build_tools() {
     if ! command -v cargo &>/dev/null; then
         echo -e "${YELLOW}==>${NC} Cargo is not installed. Installing minimal Rust toolchain..."
         curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal
+        export PATH="$HOME/.cargo/bin:$PATH"
         . "$HOME/.cargo/env" 2>/dev/null || true
     fi
 
     # Check for C compiler/linker
     if ! command -v cc &>/dev/null && ! command -v gcc &>/dev/null && ! command -v clang &>/dev/null; then
         echo -e "${YELLOW}==>${NC} C compiler not found. Attempting to install build tools..."
-        if command -v apt-get &>/dev/null && [ -c /dev/tty ]; then
+        if [ -f /run/ostree-booted ] || command -v rpm-ostree &>/dev/null; then
+            if command -v brew &>/dev/null; then
+                brew install gcc || true
+            fi
+            if ! command -v cc &>/dev/null && ! command -v gcc &>/dev/null && [ -c /dev/tty ]; then
+                sudo </dev/tty rpm-ostree install --apply-live --idempotent -y gcc || true
+            fi
+        elif command -v apt-get &>/dev/null && [ -c /dev/tty ]; then
             sudo </dev/tty apt-get update -qq && sudo </dev/tty apt-get install -y -qq build-essential || true
         elif command -v dnf &>/dev/null && [ -c /dev/tty ]; then
             sudo </dev/tty dnf install -y -q gcc || true
@@ -92,6 +92,17 @@ else
             sudo </dev/tty apk add gcc musl-dev || true
         fi
     fi
+}
+
+# 2. Compile binary
+if [ -f "Cargo.toml" ] && grep -q "rustfetch" Cargo.toml; then
+    ensure_build_tools
+    BUILD_DIR="$(pwd)"
+    echo -e "${BLUE}==>${NC} Compiling local release binary (LTO optimized)..."
+    cargo build --release -p rustfetch
+else
+    echo -e "${BLUE}==>${NC} Preparing RustFetch installation..."
+    ensure_build_tools
 
     SRC_DIR="$TEMP_DIR/source"
     echo -e "${BLUE}==>${NC} Fetching latest source code from ${GITHUB_URL}..."

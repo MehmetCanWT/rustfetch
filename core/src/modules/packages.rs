@@ -105,6 +105,26 @@ impl Module for PackagesModule {
             packages.push(format!("{snap_count} (snap)"));
         }
 
+        let brew_count = fs::read_dir("/home/linuxbrew/.linuxbrew/Cellar")
+            .map(|d| {
+                d.flatten()
+                    .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
+                    .count()
+            })
+            .unwrap_or(0)
+            + std::env::var("HOME")
+                .ok()
+                .and_then(|h| fs::read_dir(format!("{h}/.linuxbrew/Cellar")).ok())
+                .map(|d| {
+                    d.flatten()
+                        .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
+                        .count()
+                })
+                .unwrap_or(0);
+        if brew_count > 0 {
+            packages.push(format!("{brew_count} (brew)"));
+        }
+
         if packages.is_empty() {
             return None;
         }

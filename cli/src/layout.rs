@@ -70,34 +70,19 @@ pub fn color_code(name: &str) -> String {
         return name.to_string();
     }
     if name.starts_with('#') {
-        let hex = name.trim_start_matches('#');
-        if let Ok(rgb) = u32::from_str_radix(hex, 16) {
-            let (r, g, b) = if hex.len() == 6 {
-                ((rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF)
-            } else if hex.len() == 3 {
-                let r = (rgb >> 8) & 0xF;
-                let g = (rgb >> 4) & 0xF;
-                let b = rgb & 0xF;
-                (r | (r << 4), g | (g << 4), b | (b << 4))
-            } else {
-                (255, 255, 255)
-            };
+        if let Some((r, g, b)) = rustfetch_render::parse_color(name) {
             if is_linux_console() {
-                return rgb_to_ansi(r as u8, g as u8, b as u8).to_string();
+                return rgb_to_ansi(r, g, b).to_string();
             }
-            return format!("\x1b[38;2;{};{};{}m", r, g, b);
+            return format!("\x1b[38;2;{r};{g};{b}m");
         }
     }
 
+    if let Some((r, g, b)) = rustfetch_render::parse_color(name) {
+        return format!("\x1b[38;2;{r};{g};{b}m");
+    }
+
     let code = match name.to_lowercase().as_str() {
-        "black" => "\x1b[38;2;20;20;20m",
-        "red" => "\x1b[38;2;239;83;80m",
-        "green" => "\x1b[38;2;76;175;80m",
-        "yellow" => "\x1b[38;2;255;193;7m",
-        "blue" => "\x1b[38;2;66;165;245m",
-        "magenta" => "\x1b[38;2;186;104;200m",
-        "cyan" => "\x1b[38;2;38;198;218m",
-        "white" => "\x1b[38;2;245;245;245m",
         "bright_black" | "gray" | "grey" => "\x1b[38;2;140;140;140m",
         "bright_red" => "\x1b[38;2;255;82;82m",
         "bright_green" => "\x1b[38;2;105;240;174m",
@@ -170,11 +155,6 @@ pub fn terminal_size() -> (usize, usize) {
         if cols > 0 { cols } else { 80 },
         if rows > 0 { rows } else { 24 },
     )
-}
-
-#[allow(dead_code)]
-pub fn terminal_height() -> usize {
-    terminal_size().1
 }
 
 pub fn terminal_width() -> usize {
@@ -786,30 +766,20 @@ pub fn compose_with_border_image(
     position: &str,
 ) -> Vec<String> {
     match position.to_ascii_lowercase().as_str() {
-        "top" => {
-            let mut combined = Vec::with_capacity(border_image.len() + content.len());
-            combined.extend(border_image.iter().cloned());
-            combined.extend(content.iter().cloned());
-            combined
-        }
-        "bottom" => {
-            let mut combined = Vec::with_capacity(border_image.len() + content.len());
-            combined.extend(content.iter().cloned());
-            combined.extend(border_image.iter().cloned());
-            combined
-        }
-        "right" => compose_image_columns(content, border_image, false),
-        "frame" | "both" => compose_image_frame(content, border_image),
-        "left" => compose_image_columns(content, border_image, true),
+        "top" => [border_image, content].concat(),
+        "bottom" => [content, border_image].concat(),
+        "right" => compose_image_columns(content, border_image, false, true),
+        "frame" | "both" => compose_image_columns(content, border_image, true, true),
         "background" | "behind" | "bg" => content.to_vec(),
-        _ => compose_image_columns(content, border_image, true),
+        _ => compose_image_columns(content, border_image, true, false),
     }
 }
 
 fn compose_image_columns(
     content: &[String],
     border_image: &[String],
-    image_on_left: bool,
+    left: bool,
+    right: bool,
 ) -> Vec<String> {
     let image_width = border_image
         .iter()
@@ -829,37 +799,12 @@ fn compose_image_columns(
         let content_line = content.get(index).map(String::as_str).unwrap_or("");
         let image_pad = " ".repeat(image_width.saturating_sub(strip_ansi_width(image)));
         let content_pad = " ".repeat(content_width.saturating_sub(strip_ansi_width(content_line)));
-        if image_on_left {
-            combined.push(format!("{image}{image_pad}   {content_line}"));
-        } else {
-            combined.push(format!("{content_line}{content_pad}   {image}"));
-        }
-    }
-    combined
-}
-
-fn compose_image_frame(content: &[String], border_image: &[String]) -> Vec<String> {
-    let image_width = border_image
-        .iter()
-        .map(|line| strip_ansi_width(line))
-        .max()
-        .unwrap_or(0);
-    let content_width = content
-        .iter()
-        .map(|line| strip_ansi_width(line))
-        .max()
-        .unwrap_or(0);
-    let total_rows = border_image.len().max(content.len());
-    let mut combined = Vec::with_capacity(total_rows);
-
-    for index in 0..total_rows {
-        let image = border_image.get(index).map(String::as_str).unwrap_or("");
-        let content_line = content.get(index).map(String::as_str).unwrap_or("");
-        let image_pad = " ".repeat(image_width.saturating_sub(strip_ansi_width(image)));
-        let content_pad = " ".repeat(content_width.saturating_sub(strip_ansi_width(content_line)));
-        combined.push(format!(
-            "{image}{image_pad}   {content_line}{content_pad}   {image}"
-        ));
+        let row = match (left, right) {
+            (true, true) => format!("{image}{image_pad}   {content_line}{content_pad}   {image}"),
+            (true, false) => format!("{image}{image_pad}   {content_line}"),
+            _ => format!("{content_line}{content_pad}   {image}"),
+        };
+        combined.push(row);
     }
     combined
 }
@@ -1104,92 +1049,59 @@ fn render_with_logo(
     let mut right_lines = build_right_lines_bounded(info_lines, opts, Some(avail_card_w));
     let disable_colors = !colors_enabled();
 
-    if opts.logo_position == "top" {
-        let logo_pad = if opts.center && term_w > logo.width {
-            " ".repeat((term_w.saturating_sub(logo.width)) / 2)
-        } else {
-            pad.to_string()
-        };
-        for line in &logo.lines {
-            let clean = if disable_colors {
-                strip_ansi(line)
+    if is_vertical {
+        let print_logo = || {
+            let logo_pad = if opts.center && term_w > logo.width {
+                " ".repeat((term_w.saturating_sub(logo.width)) / 2)
             } else {
-                line.clone()
+                pad.to_string()
             };
-            println!("{logo_pad}{clean}");
-        }
-        let max_w = right_lines
-            .iter()
-            .map(|l| strip_ansi_width(l))
-            .max()
-            .unwrap_or(0);
-        let modules_pad = if opts.center && term_w > max_w {
-            " ".repeat((term_w.saturating_sub(max_w)) / 2)
-        } else {
-            pad.to_string()
+            for line in &logo.lines {
+                let clean = if disable_colors {
+                    strip_ansi(line)
+                } else {
+                    line.clone()
+                };
+                println!("{logo_pad}{clean}");
+            }
         };
-        let bg_lines = emit_all_kitty_backgrounds(
-            opts.border_images,
-            modules_pad.len(),
-            max_w,
-            right_lines.len(),
-        );
-        println!();
-        for line in &right_lines {
-            let clean = if disable_colors {
-                strip_ansi(line)
+        let print_modules = || {
+            let max_w = right_lines
+                .iter()
+                .map(|l| strip_ansi_width(l))
+                .max()
+                .unwrap_or(0);
+            let modules_pad = if opts.center && term_w > max_w {
+                " ".repeat((term_w.saturating_sub(max_w)) / 2)
             } else {
-                line.clone()
+                pad.to_string()
             };
-            println!("{modules_pad}{clean}");
-        }
-        for _ in right_lines.len()..bg_lines {
+            let bg_lines = emit_all_kitty_backgrounds(
+                opts.border_images,
+                modules_pad.len(),
+                max_w,
+                right_lines.len(),
+            );
+            for line in &right_lines {
+                let clean = if disable_colors {
+                    strip_ansi(line)
+                } else {
+                    line.clone()
+                };
+                println!("{modules_pad}{clean}");
+            }
+            for _ in right_lines.len()..bg_lines {
+                println!();
+            }
+        };
+        if opts.logo_position == "top" {
+            print_logo();
             println!();
-        }
-        return;
-    }
-
-    if opts.logo_position == "bottom" {
-        let max_w = right_lines
-            .iter()
-            .map(|l| strip_ansi_width(l))
-            .max()
-            .unwrap_or(0);
-        let modules_pad = if opts.center && term_w > max_w {
-            " ".repeat((term_w.saturating_sub(max_w)) / 2)
+            print_modules();
         } else {
-            pad.to_string()
-        };
-        let bg_lines = emit_all_kitty_backgrounds(
-            opts.border_images,
-            modules_pad.len(),
-            max_w,
-            right_lines.len(),
-        );
-        for line in &right_lines {
-            let clean = if disable_colors {
-                strip_ansi(line)
-            } else {
-                line.clone()
-            };
-            println!("{modules_pad}{clean}");
-        }
-        for _ in right_lines.len()..bg_lines {
+            print_modules();
             println!();
-        }
-        println!();
-        let logo_pad = if opts.center && term_w > logo.width {
-            " ".repeat((term_w.saturating_sub(logo.width)) / 2)
-        } else {
-            pad.to_string()
-        };
-        for line in &logo.lines {
-            let clean = if disable_colors {
-                strip_ansi(line)
-            } else {
-                line.clone()
-            };
-            println!("{logo_pad}{clean}");
+            print_logo();
         }
         return;
     }

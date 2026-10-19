@@ -43,11 +43,6 @@ pub struct WifiDetails {
     pub band: Option<String>,
 }
 
-pub fn get_wifi_info() -> Option<(String, Option<u8>)> {
-    let details = get_wifi_details()?;
-    Some((details.ssid, details.signal_pct))
-}
-
 pub fn get_wifi_details() -> Option<WifiDetails> {
     let iface = find_wireless_interface()?;
     if let Ok(output) = Command::new("iw").args(["dev", &iface, "link"]).output() {
@@ -89,36 +84,35 @@ pub fn get_wifi_details() -> Option<WifiDetails> {
 }
 
 pub fn find_wireless_interface() -> Option<String> {
-    let net_dir = fs::read_dir("/sys/class/net").ok()?;
-    for entry in net_dir.flatten() {
+    let mut fallback = None;
+    for entry in fs::read_dir("/sys/class/net").ok()?.flatten() {
         let p = entry.path();
-        let fname = entry.file_name();
-        let fname_str = fname.to_string_lossy();
-        if p.join("wireless").exists() || p.join("phy80211").exists() || fname_str.starts_with("wl")
-        {
-            let state = fs::read_to_string(p.join("operstate")).unwrap_or_default();
-            if state.trim() == "up" {
-                return Some(fname_str.to_string());
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if p.join("wireless").exists() || p.join("phy80211").exists() || name.starts_with("wl") {
+            if fs::read_to_string(p.join("operstate"))
+                .map(|s| s.trim() == "up")
+                .unwrap_or(false)
+            {
+                return Some(name);
+            }
+            if fallback.is_none() {
+                fallback = Some(name);
             }
         }
     }
-
-    // Fallback: any wireless interface
-    let net_dir = fs::read_dir("/sys/class/net").ok()?;
-    for entry in net_dir.flatten() {
-        let fname = entry.file_name();
-        let fname_str = fname.to_string_lossy();
-        if fname_str.starts_with("wl") {
-            return Some(fname_str.to_string());
-        }
-    }
-
-    None
+    fallback
 }
 
-pub fn parse_iw_link_output(text: &str) -> Option<(String, Option<u8>)> {
-    let details = parse_iw_link_details(text)?;
-    Some((details.ssid, details.signal_pct))
+fn freq_to_band(freq: f64) -> Option<String> {
+    if freq >= 5925.0 {
+        Some("6 GHz".to_string())
+    } else if freq >= 4900.0 {
+        Some("5 GHz".to_string())
+    } else if freq >= 2400.0 {
+        Some("2.4 GHz".to_string())
+    } else {
+        None
+    }
 }
 
 pub fn parse_iw_link_details(text: &str) -> Option<WifiDetails> {
@@ -139,26 +133,21 @@ pub fn parse_iw_link_details(text: &str) -> Option<WifiDetails> {
                 ssid = Some(s.to_string());
             }
         } else if let Some(rest) = trimmed.strip_prefix("signal:") {
-            if let Some(dbm_str) = rest.split_whitespace().next() {
-                if let Ok(dbm) = dbm_str.parse::<i32>() {
-                    // Standard dBm to percentage mapping: -50 dBm is 100%, -100 dBm is 0%
-                    let pct = (2 * (dbm + 100)).clamp(0, 100) as u8;
-                    signal_pct = Some(pct);
-                    dbm_val = Some(dbm);
-                }
+            if let Some(dbm) = rest
+                .split_whitespace()
+                .next()
+                .and_then(|s| s.parse::<i32>().ok())
+            {
+                // Standard dBm to percentage mapping: -50 dBm is 100%, -100 dBm is 0%
+                signal_pct = Some((2 * (dbm + 100)).clamp(0, 100) as u8);
+                dbm_val = Some(dbm);
             }
         } else if let Some(rest) = trimmed.strip_prefix("freq:") {
-            if let Some(freq_str) = rest.split_whitespace().next() {
-                if let Ok(freq) = freq_str.parse::<f64>() {
-                    if freq >= 5925.0 {
-                        band = Some("6 GHz".to_string());
-                    } else if freq >= 4900.0 {
-                        band = Some("5 GHz".to_string());
-                    } else if freq >= 2400.0 {
-                        band = Some("2.4 GHz".to_string());
-                    }
-                }
-            }
+            band = rest
+                .split_whitespace()
+                .next()
+                .and_then(|s| s.parse::<f64>().ok())
+                .and_then(freq_to_band);
         }
     }
 
@@ -172,36 +161,33 @@ pub fn parse_iw_link_details(text: &str) -> Option<WifiDetails> {
 
 pub fn parse_nmcli_dev_wifi(text: &str) -> Option<WifiDetails> {
     for line in text.lines() {
-        let parts: Vec<&str> = line.split(':').collect();
-        if parts.len() >= 4 {
-            let active = parts[0].trim().to_lowercase();
-            // yes, evet, ja, oui, etc. or non-empty/non-no
-            if active == "yes" || active == "evet" || active == "ja" || active == "true" {
-                let ssid = parts[1].trim().to_string();
-                if ssid.is_empty() {
-                    continue;
-                }
-                let signal_pct = parts[2].trim().parse::<u8>().ok();
-                let freq_num = parts[3]
-                    .split_whitespace()
-                    .next()
-                    .and_then(|s| s.parse::<f64>().ok());
-                let band = freq_num.map(|f| {
-                    if f >= 5925.0 {
-                        "6 GHz".to_string()
-                    } else if f >= 4900.0 {
-                        "5 GHz".to_string()
-                    } else {
-                        "2.4 GHz".to_string()
-                    }
-                });
-                return Some(WifiDetails {
-                    ssid,
-                    signal_pct,
-                    dbm: None,
-                    band,
-                });
+        let Some((active_raw, rest)) = line.split_once(':') else {
+            continue;
+        };
+        let Some((rest, freq_raw)) = rest.rsplit_once(':') else {
+            continue;
+        };
+        let Some((ssid_raw, sig_raw)) = rest.rsplit_once(':') else {
+            continue;
+        };
+        let active = active_raw.trim().to_lowercase();
+        if matches!(active.as_str(), "yes" | "evet" | "ja" | "true") {
+            let ssid = ssid_raw.trim().replace("\\:", ":");
+            if ssid.is_empty() {
+                continue;
             }
+            let signal_pct = sig_raw.trim().parse::<u8>().ok();
+            let band = freq_raw
+                .split_whitespace()
+                .next()
+                .and_then(|s| s.parse::<f64>().ok())
+                .and_then(freq_to_band);
+            return Some(WifiDetails {
+                ssid,
+                signal_pct,
+                dbm: None,
+                band,
+            });
         }
     }
     None
@@ -217,13 +203,6 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_iw_link_output() {
-        let sample = "Connected to 3c:64:cf:72:29:e6 (on wlp0s20f3)\n\tSSID: MyNetwork 5G\n\tsignal: -45 dBm\n";
-        let res = parse_iw_link_output(sample);
-        assert_eq!(res, Some(("MyNetwork 5G".to_string(), Some(100))));
-    }
-
-    #[test]
     fn test_parse_iw_link_details_with_freq() {
         let sample = "Connected to 3c:64:cf:72:29:e6 (on wlp0s20f3)\n\tSSID: MyNetwork 5G\n\tfreq: 5200.0\n\tsignal: -48 dBm\n";
         let details = parse_iw_link_details(sample).unwrap();
@@ -235,15 +214,14 @@ mod tests {
 
     #[test]
     fn test_parse_iw_link_disconnected() {
-        assert_eq!(parse_iw_link_output("Not connected."), None);
         assert_eq!(parse_iw_link_details("Not connected."), None);
     }
 
     #[test]
     fn test_parse_nmcli_dev_wifi() {
-        let sample = "hayır:OtherNet:60:2437 MHz\nevet:HomeFiber:95:5200 MHz\n";
+        let sample = "hayır:OtherNet:60:2437 MHz\nevet:Home\\:Fiber:95:5200 MHz\n";
         let details = parse_nmcli_dev_wifi(sample).unwrap();
-        assert_eq!(details.ssid, "HomeFiber");
+        assert_eq!(details.ssid, "Home:Fiber");
         assert_eq!(details.signal_pct, Some(95));
         assert_eq!(details.band, Some("5 GHz".to_string()));
     }

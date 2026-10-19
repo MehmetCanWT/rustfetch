@@ -8,8 +8,30 @@ use std::num::NonZeroU32;
 
 use crate::{kitty, terminal};
 
-pub fn render(path: &str, target_cols: usize) -> Option<usize> {
-    render_ex(path, target_cols, None).map(|(_, rows)| rows)
+pub(crate) fn resize_rgba(
+    raw: Vec<u8>,
+    src_w: u32,
+    src_h: u32,
+    dst_w: u32,
+    dst_h: u32,
+    filter: fr::FilterType,
+) -> Option<Vec<u8>> {
+    let src_image = Image::from_vec_u8(
+        NonZeroU32::new(src_w)?,
+        NonZeroU32::new(src_h)?,
+        raw,
+        fr::PixelType::U8x4,
+    )
+    .ok()?;
+    let mut dst_image = Image::new(
+        NonZeroU32::new(dst_w)?,
+        NonZeroU32::new(dst_h)?,
+        fr::PixelType::U8x4,
+    );
+    fr::Resizer::new(fr::ResizeAlg::Convolution(filter))
+        .resize(&src_image.view(), &mut dst_image.view_mut())
+        .ok()?;
+    Some(dst_image.into_vec())
 }
 
 pub fn render_ex(
@@ -34,64 +56,34 @@ pub fn render_ex(
                 return None;
             }
 
-            let (fit_cols, fit_rows) = if let Some(max_r) = max_rows {
-                fit_dimensions(
-                    orig_width,
-                    orig_height,
-                    Some(target_cols),
-                    Some(max_r),
-                    target_cols,
-                    max_r,
-                    true,
-                )
-            } else {
-                fit_dimensions(
-                    orig_width,
-                    orig_height,
-                    Some(target_cols),
-                    None,
-                    target_cols,
-                    24,
-                    true,
-                )
-            };
+            let (fit_cols, fit_rows) = fit_dimensions(
+                orig_width,
+                orig_height,
+                Some(target_cols),
+                max_rows,
+                target_cols,
+                max_rows.unwrap_or(24),
+                true,
+            );
             let fit_cols = fit_cols.max(1);
             let fit_rows = fit_rows.max(1);
 
             let target_px_width = fit_cols as u32 * cell_w as u32;
             let target_px_height = fit_rows as u32 * cell_h as u32;
 
-            if target_px_width == 0 || target_px_height == 0 {
-                return None;
-            }
-
-            let mut resized_buffers = Vec::new();
-            let mut resizer =
-                fr::Resizer::new(fr::ResizeAlg::Convolution(fr::FilterType::Lanczos3));
-
+            let mut resized_buffers = Vec::with_capacity(frames.len());
             for frame in &frames {
-                let rgba_img = frame.buffer();
-                let src_width = NonZeroU32::new(orig_width)?;
-                let src_height = NonZeroU32::new(orig_height)?;
-                let src_image = Image::from_vec_u8(
-                    src_width,
-                    src_height,
-                    rgba_img.as_raw().clone(),
-                    fr::PixelType::U8x4,
-                )
-                .ok()?;
-
-                let dst_width = NonZeroU32::new(target_px_width)?;
-                let dst_height = NonZeroU32::new(target_px_height)?;
-                let mut dst_image = Image::new(dst_width, dst_height, fr::PixelType::U8x4);
-
-                resizer
-                    .resize(&src_image.view(), &mut dst_image.view_mut())
-                    .ok()?;
-
+                let buf = resize_rgba(
+                    frame.buffer().as_raw().clone(),
+                    orig_width,
+                    orig_height,
+                    target_px_width,
+                    target_px_height,
+                    fr::FilterType::Lanczos3,
+                )?;
                 let (num, den) = frame.delay().numer_denom_ms();
                 let delay_ms = num.checked_div(den).unwrap_or(0);
-                resized_buffers.push((dst_image.into_vec(), delay_ms));
+                resized_buffers.push((buf, delay_ms));
             }
 
             let kitty_frames: Vec<_> = resized_buffers
@@ -122,58 +114,32 @@ pub fn render_ex(
         return None;
     }
 
-    let (fit_cols, fit_rows) = if let Some(max_r) = max_rows {
-        fit_dimensions(
-            orig_width,
-            orig_height,
-            Some(target_cols),
-            Some(max_r),
-            target_cols,
-            max_r,
-            true,
-        )
-    } else {
-        fit_dimensions(
-            orig_width,
-            orig_height,
-            Some(target_cols),
-            None,
-            target_cols,
-            24,
-            true,
-        )
-    };
+    let (fit_cols, fit_rows) = fit_dimensions(
+        orig_width,
+        orig_height,
+        Some(target_cols),
+        max_rows,
+        target_cols,
+        max_rows.unwrap_or(24),
+        true,
+    );
     let fit_cols = fit_cols.max(1);
     let fit_rows = fit_rows.max(1);
 
     let target_px_width = fit_cols as u32 * cell_w as u32;
     let target_px_height = fit_rows as u32 * cell_h as u32;
 
-    if target_px_width == 0 || target_px_height == 0 {
-        return None;
-    }
-
-    let src_width = NonZeroU32::new(orig_width)?;
-    let src_height = NonZeroU32::new(orig_height)?;
-    let src_image = Image::from_vec_u8(
-        src_width,
-        src_height,
+    let buf = resize_rgba(
         rgba_img.into_raw(),
-        fr::PixelType::U8x4,
-    )
-    .ok()?;
-
-    let dst_width = NonZeroU32::new(target_px_width)?;
-    let dst_height = NonZeroU32::new(target_px_height)?;
-    let mut dst_image = Image::new(dst_width, dst_height, fr::PixelType::U8x4);
-
-    let mut resizer = fr::Resizer::new(fr::ResizeAlg::Convolution(fr::FilterType::Lanczos3));
-    resizer
-        .resize(&src_image.view(), &mut dst_image.view_mut())
-        .ok()?;
+        orig_width,
+        orig_height,
+        target_px_width,
+        target_px_height,
+        fr::FilterType::Lanczos3,
+    )?;
 
     kitty::print_kitty(
-        dst_image.buffer(),
+        &buf,
         target_px_width,
         target_px_height,
         fit_cols as u32,
@@ -194,14 +160,7 @@ pub fn fit_dimensions(
     container_rows: usize,
     preserve_aspect_ratio: bool,
 ) -> (usize, usize) {
-    if orig_w == 0 || orig_h == 0 {
-        return (
-            target_cols.unwrap_or(container_cols).max(1),
-            target_rows.unwrap_or(container_rows).max(1),
-        );
-    }
-
-    if !preserve_aspect_ratio {
+    if orig_w == 0 || orig_h == 0 || !preserve_aspect_ratio {
         return (
             target_cols.unwrap_or(container_cols).max(1),
             target_rows.unwrap_or(container_rows).max(1),
@@ -225,22 +184,9 @@ pub fn fit_dimensions(
             let cols = (rows as f64 * natural_cols_per_row).round().max(1.0) as usize;
             (cols, rows)
         }
-        (Some(c), Some(r)) => {
-            let box_c = c.max(1) as f64;
-            let box_r = r.max(1) as f64;
-            if box_c / natural_cols_per_row <= box_r {
-                let cols = box_c as usize;
-                let rows = (box_c / natural_cols_per_row).round().max(1.0) as usize;
-                (cols, rows)
-            } else {
-                let rows = box_r as usize;
-                let cols = (box_r * natural_cols_per_row).round().max(1.0) as usize;
-                (cols, rows)
-            }
-        }
-        (None, None) => {
-            let box_c = container_cols.max(1) as f64;
-            let box_r = container_rows.max(1) as f64;
+        (c, r) => {
+            let box_c = c.unwrap_or(container_cols).max(1) as f64;
+            let box_r = r.unwrap_or(container_rows).max(1) as f64;
             if box_c / natural_cols_per_row <= box_r {
                 let cols = box_c as usize;
                 let rows = (box_c / natural_cols_per_row).round().max(1.0) as usize;
@@ -301,21 +247,14 @@ pub fn render_halfblock_ex(
         pixel_rows
     };
 
-    let src_width = NonZeroU32::new(orig_width)?;
-    let src_height = NonZeroU32::new(orig_height)?;
-    let src_image =
-        Image::from_vec_u8(src_width, src_height, img.into_raw(), fr::PixelType::U8x4).ok()?;
-
-    let dst_width = NonZeroU32::new(pixel_cols as u32)?;
-    let dst_height = NonZeroU32::new(pixel_rows as u32)?;
-    let mut dst_image = Image::new(dst_width, dst_height, fr::PixelType::U8x4);
-
-    let mut resizer = fr::Resizer::new(fr::ResizeAlg::Convolution(fr::FilterType::Lanczos3));
-    resizer
-        .resize(&src_image.view(), &mut dst_image.view_mut())
-        .ok()?;
-
-    let raw = dst_image.into_vec();
+    let raw = resize_rgba(
+        img.into_raw(),
+        orig_width,
+        orig_height,
+        pixel_cols as u32,
+        pixel_rows as u32,
+        fr::FilterType::Lanczos3,
+    )?;
     let width = pixel_cols;
     let height = pixel_rows;
     let mut lines = Vec::with_capacity(height / 2);
@@ -407,41 +346,23 @@ pub struct BackgroundOptions {
 }
 
 pub fn render_background_ex(path: &str, opts: &BackgroundOptions) -> Option<usize> {
-    let img_reader = match ImageReader::open(path) {
-        Ok(r) => match r.with_guessed_format() {
-            Ok(r) => r,
-            Err(_) => return None,
-        },
-        Err(_) => return None,
-    };
-
-    let img = match img_reader.decode() {
-        Ok(i) => i,
-        Err(_) => return None,
-    };
-    let rgba_img = img.to_rgba8();
+    let img_reader = ImageReader::open(path).ok()?.with_guessed_format().ok()?;
+    let rgba_img = img_reader.decode().ok()?.to_rgba8();
     let orig_width = rgba_img.width();
     let orig_height = rgba_img.height();
     if orig_width == 0 || orig_height == 0 || opts.card_w == 0 || opts.card_h == 0 {
         return None;
     }
 
-    let (fit_cols, fit_rows) = if opts.preserve_aspect_ratio {
-        fit_dimensions(
-            orig_width,
-            orig_height,
-            opts.target_cols,
-            opts.target_rows,
-            opts.card_w,
-            opts.card_h,
-            true,
-        )
-    } else {
-        (
-            opts.target_cols.unwrap_or(opts.card_w).max(1),
-            opts.target_rows.unwrap_or(opts.card_h).max(1),
-        )
-    };
+    let (fit_cols, fit_rows) = fit_dimensions(
+        orig_width,
+        orig_height,
+        opts.target_cols,
+        opts.target_rows,
+        opts.card_w,
+        opts.card_h,
+        opts.preserve_aspect_ratio,
+    );
 
     // Calculate exact center alignment within the card:
     let center_pad_x = (opts.card_w as i32 - fit_cols as i32) / 2;
@@ -459,32 +380,15 @@ pub fn render_background_ex(path: &str, opts: &BackgroundOptions) -> Option<usiz
         let scale = ratio_w.min(ratio_h);
         let dst_w = ((orig_width as f64 * scale).round() as u32).max(1);
         let dst_h = ((orig_height as f64 * scale).round() as u32).max(1);
-
-        if let (Some(sw), Some(sh), Some(dw), Some(dh)) = (
-            NonZeroU32::new(orig_width),
-            NonZeroU32::new(orig_height),
-            NonZeroU32::new(dst_w),
-            NonZeroU32::new(dst_h),
-        ) {
-            match Image::from_vec_u8(sw, sh, rgba_img.into_raw(), fr::PixelType::U8x4) {
-                Ok(src_image) => {
-                    let mut dst_image = Image::new(dw, dh, fr::PixelType::U8x4);
-                    let mut resizer =
-                        fr::Resizer::new(fr::ResizeAlg::Convolution(fr::FilterType::Lanczos3));
-                    if resizer
-                        .resize(&src_image.view(), &mut dst_image.view_mut())
-                        .is_ok()
-                    {
-                        (dst_image.into_vec(), dst_w, dst_h)
-                    } else {
-                        return None;
-                    }
-                }
-                Err(_) => return None,
-            }
-        } else {
-            (rgba_img.into_raw(), orig_width, orig_height)
-        }
+        let resized = resize_rgba(
+            rgba_img.into_raw(),
+            orig_width,
+            orig_height,
+            dst_w,
+            dst_h,
+            fr::FilterType::Lanczos3,
+        )?;
+        (resized, dst_w, dst_h)
     } else {
         (rgba_img.into_raw(), orig_width, orig_height)
     };
@@ -554,33 +458,24 @@ pub fn apply_image_background_to_lines_ex(
         return None;
     }
 
-    let (fit_cols, fit_rows) = if preserve_aspect_ratio {
-        fit_dimensions(
-            orig_width,
-            orig_height,
-            Some(target_cols),
-            Some(target_rows),
-            target_cols,
-            target_rows,
-            true,
-        )
-    } else {
-        (target_cols, target_rows)
-    };
+    let (fit_cols, fit_rows) = fit_dimensions(
+        orig_width,
+        orig_height,
+        Some(target_cols),
+        Some(target_rows),
+        target_cols,
+        target_rows,
+        preserve_aspect_ratio,
+    );
 
-    let src_w = NonZeroU32::new(orig_width)?;
-    let src_h = NonZeroU32::new(orig_height)?;
-    let src_image = Image::from_vec_u8(src_w, src_h, img.into_raw(), fr::PixelType::U8x4).ok()?;
-
-    let dst_w = NonZeroU32::new(fit_cols as u32)?;
-    let dst_h = NonZeroU32::new(fit_rows as u32)?;
-    let mut dst_image = Image::new(dst_w, dst_h, fr::PixelType::U8x4);
-
-    let mut resizer = fr::Resizer::new(fr::ResizeAlg::Convolution(fr::FilterType::Lanczos3));
-    resizer
-        .resize(&src_image.view(), &mut dst_image.view_mut())
-        .ok()?;
-    let raw = dst_image.into_vec();
+    let raw = resize_rgba(
+        img.into_raw(),
+        orig_width,
+        orig_height,
+        fit_cols as u32,
+        fit_rows as u32,
+        fr::FilterType::Lanczos3,
+    )?;
     let mut result = Vec::with_capacity(target_rows);
 
     let center_pad_x = (target_cols as i32 - fit_cols as i32) / 2;

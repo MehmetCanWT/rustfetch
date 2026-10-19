@@ -1,9 +1,7 @@
 use std::fmt::Write as _;
 use std::io::Write;
-use std::num::NonZeroU32;
 
 use fast_image_resize as fr;
-use fast_image_resize::Image;
 use image::ImageReader;
 
 use crate::terminal;
@@ -162,18 +160,13 @@ pub fn encode_sixel(rgba_data: &[u8], width: u32, height: u32) -> String {
 }
 
 /// Renders an image using the Sixel graphics protocol.
-pub fn render_sixel(path: &str, target_cols: usize) -> Option<usize> {
-    render_sixel_ex(path, target_cols, None).map(|(_, rows)| rows)
-}
-
 pub fn render_sixel_ex(
     path: &str,
     target_cols: usize,
     max_rows: Option<usize>,
 ) -> Option<(usize, usize)> {
     let img_reader = ImageReader::open(path).ok()?.with_guessed_format().ok()?;
-    let img = img_reader.decode().ok()?;
-    let rgba_img = img.to_rgba8();
+    let rgba_img = img_reader.decode().ok()?.to_rgba8();
 
     let orig_width = rgba_img.width();
     let orig_height = rgba_img.height();
@@ -185,57 +178,31 @@ pub fn render_sixel_ex(
     let cell_w = cell_w.max(1) as u32;
     let cell_h = cell_h.max(1) as u32;
 
-    let (fit_cols, fit_rows) = if let Some(max_r) = max_rows {
-        crate::image::fit_dimensions(
-            orig_width,
-            orig_height,
-            Some(target_cols),
-            Some(max_r),
-            target_cols,
-            max_r,
-            true,
-        )
-    } else {
-        crate::image::fit_dimensions(
-            orig_width,
-            orig_height,
-            Some(target_cols),
-            None,
-            target_cols,
-            24,
-            true,
-        )
-    };
+    let (fit_cols, fit_rows) = crate::image::fit_dimensions(
+        orig_width,
+        orig_height,
+        Some(target_cols),
+        max_rows,
+        target_cols,
+        max_rows.unwrap_or(24),
+        true,
+    );
     let fit_cols = fit_cols.max(1);
     let fit_rows = fit_rows.max(1);
 
     let target_px_width = (fit_cols as u32) * cell_w;
     let target_px_height = (fit_rows as u32) * cell_h;
 
-    if target_px_width == 0 || target_px_height == 0 {
-        return None;
-    }
-
-    let src_width = NonZeroU32::new(orig_width)?;
-    let src_height = NonZeroU32::new(orig_height)?;
-    let src_image = Image::from_vec_u8(
-        src_width,
-        src_height,
+    let buf = crate::image::resize_rgba(
         rgba_img.into_raw(),
-        fr::PixelType::U8x4,
-    )
-    .ok()?;
+        orig_width,
+        orig_height,
+        target_px_width,
+        target_px_height,
+        fr::FilterType::Lanczos3,
+    )?;
 
-    let dst_width = NonZeroU32::new(target_px_width)?;
-    let dst_height = NonZeroU32::new(target_px_height)?;
-    let mut dst_image = Image::new(dst_width, dst_height, fr::PixelType::U8x4);
-
-    let mut resizer = fr::Resizer::new(fr::ResizeAlg::Convolution(fr::FilterType::Lanczos3));
-    resizer
-        .resize(&src_image.view(), &mut dst_image.view_mut())
-        .ok()?;
-
-    let sixel_payload = encode_sixel(dst_image.buffer(), target_px_width, target_px_height);
+    let sixel_payload = encode_sixel(&buf, target_px_width, target_px_height);
     print!("{sixel_payload}");
     let _ = std::io::stdout().flush();
 

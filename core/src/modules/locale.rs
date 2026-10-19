@@ -21,10 +21,6 @@ pub fn parse_locale(lc_all: Option<&str>, lang: Option<&str>) -> Option<String> 
     check(lc_all).or_else(|| check(lang))
 }
 
-pub fn parse_locale_env<F: Fn(&str) -> Option<String>>(get_var: F) -> Option<String> {
-    parse_locale(get_var("LC_ALL").as_deref(), get_var("LANG").as_deref())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -54,14 +50,5 @@ mod tests {
 
         assert_eq!(parse_locale(Some(""), Some("")), None);
         assert_eq!(parse_locale(None, None), None);
-    }
-
-    #[test]
-    fn test_parse_locale_env_helper() {
-        let env_map = |key: &str| match key {
-            "LANG" => Some("en_GB.UTF-8".to_string()),
-            _ => None,
-        };
-        assert_eq!(parse_locale_env(env_map).as_deref(), Some("en_GB.UTF-8"));
     }
 }

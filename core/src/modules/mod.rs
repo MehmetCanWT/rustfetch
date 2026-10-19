@@ -32,34 +32,37 @@ pub mod wifi;
 use crate::Module;
 
 pub fn all_modules() -> Vec<Box<dyn Module>> {
-    vec![
-        Box::new(os::Os),
-        Box::new(host::Host),
-        Box::new(board::Board),
-        Box::new(kernel::Kernel),
-        Box::new(uptime::Uptime),
-        Box::new(packages::PackagesModule),
-        Box::new(shell::Shell),
-        Box::new(desktop::DesktopModule),
-        Box::new(font::FontModule),
-        Box::new(terminal::Terminal),
-        Box::new(cpu::Cpu),
-        Box::new(temp::Temp),
-        Box::new(gpu::GpuModule),
-        Box::new(memory::Memory),
-        Box::new(swap::Swap),
-        Box::new(disk::Disk),
-        Box::new(battery::BatteryModule),
-        Box::new(brightness::BrightnessModule),
-        Box::new(display::Display),
-        Box::new(sound::Sound),
-        Box::new(wifi::Wifi),
-        Box::new(local_ip::LocalIpModule),
-        Box::new(locale::Locale),
-        Box::new(processes::Processes),
-        Box::new(init::Init),
-        Box::new(container::Container),
+    [
+        "os",
+        "host",
+        "board",
+        "kernel",
+        "uptime",
+        "packages",
+        "shell",
+        "desktop",
+        "font",
+        "terminal",
+        "cpu",
+        "temp",
+        "gpu",
+        "memory",
+        "swap",
+        "disk",
+        "battery",
+        "brightness",
+        "display",
+        "sound",
+        "wifi",
+        "local_ip",
+        "locale",
+        "processes",
+        "init",
+        "container",
     ]
+    .into_iter()
+    .filter_map(module_by_name)
+    .collect()
 }
 
 pub fn module_by_name(name: &str) -> Option<Box<dyn Module>> {

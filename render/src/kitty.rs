@@ -2,6 +2,17 @@ use base64::prelude::*;
 use std::fmt::Write as _;
 use std::io::Write;
 
+fn compress_and_encode(rgba_data: &[u8]) -> (bool, String) {
+    let compressed = miniz_oxide::deflate::compress_to_vec_zlib(rgba_data, 6);
+    let use_compression = compressed.len() < rgba_data.len();
+    let data = if use_compression {
+        &compressed[..]
+    } else {
+        rgba_data
+    };
+    (use_compression, BASE64_STANDARD.encode(data))
+}
+
 pub fn print_kitty_ex(
     rgba_data: &[u8],
     width: u32,
@@ -15,15 +26,7 @@ pub fn print_kitty_ex(
         return;
     }
 
-    let compressed = miniz_oxide::deflate::compress_to_vec_zlib(rgba_data, 6);
-    let use_compression = compressed.len() < rgba_data.len();
-    let data_to_encode = if use_compression {
-        &compressed[..]
-    } else {
-        rgba_data
-    };
-
-    let encoded = BASE64_STANDARD.encode(data_to_encode);
+    let (use_compression, encoded) = compress_and_encode(rgba_data);
     let chunks: Vec<&str> = encoded
         .as_bytes()
         .chunks(4096)
@@ -37,43 +40,6 @@ pub fn print_kitty_ex(
             if use_compression {
                 cmd.push_str(",o=z");
             }
-            if z_index != 0 {
-                let _ = write!(cmd, ",z={z_index}");
-            }
-            if prevent_cursor_move {
-                cmd.push_str(",C=1");
-            }
-            let _ = write!(cmd, ",m={m};{chunk}\x1b\\");
-            print!("{cmd}");
-        } else {
-            print!("\x1b_Gm={m},q=2;{chunk}\x1b\\");
-        }
-    }
-    let _ = std::io::stdout().flush();
-}
-
-pub fn print_kitty_png(
-    png_bytes: &[u8],
-    cols: u32,
-    rows: u32,
-    z_index: i32,
-    prevent_cursor_move: bool,
-) {
-    if png_bytes.is_empty() || cols == 0 || rows == 0 {
-        return;
-    }
-
-    let encoded = BASE64_STANDARD.encode(png_bytes);
-    let chunks: Vec<&str> = encoded
-        .as_bytes()
-        .chunks(4096)
-        .map(|c| std::str::from_utf8(c).unwrap())
-        .collect();
-
-    for (i, chunk) in chunks.iter().enumerate() {
-        let m = if i == chunks.len() - 1 { 0 } else { 1 };
-        if i == 0 {
-            let mut cmd = format!("\x1b_Ga=T,c={cols},r={rows},q=2,f=100");
             if z_index != 0 {
                 let _ = write!(cmd, ",z={z_index}");
             }
@@ -106,14 +72,7 @@ pub fn print_kitty_animation(frames: &[KittyFrame], width: u32, height: u32, col
     let image_id = 1;
 
     for (frame_idx, frame) in frames.iter().enumerate() {
-        let compressed = miniz_oxide::deflate::compress_to_vec_zlib(frame.rgba_data, 6);
-        let use_compression = compressed.len() < frame.rgba_data.len();
-        let data_to_encode = if use_compression {
-            &compressed[..]
-        } else {
-            frame.rgba_data
-        };
-        let encoded = BASE64_STANDARD.encode(data_to_encode);
+        let (use_compression, encoded) = compress_and_encode(frame.rgba_data);
         let chunks: Vec<&str> = encoded
             .as_bytes()
             .chunks(4096)

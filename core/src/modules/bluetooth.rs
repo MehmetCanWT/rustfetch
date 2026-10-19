@@ -87,10 +87,8 @@ pub fn parse_bluetoothctl_info_battery(output: &str) -> Option<u8> {
         let trimmed = line.trim();
         if let Some(rest) = trimmed.strip_prefix("Battery Percentage:") {
             let rest = rest.trim();
-            // Could be "0x50 (80)" or "80%" or "80"
-            if let Some(open) = rest.find('(') {
-                if let Some(close) = rest.find(')') {
-                    let inner = &rest[open + 1..close];
+            if let Some((_, after_open)) = rest.split_once('(') {
+                if let Some((inner, _)) = after_open.split_once(')') {
                     if let Ok(pct) = inner.trim().parse::<u8>() {
                         return Some(pct.min(100));
                     }

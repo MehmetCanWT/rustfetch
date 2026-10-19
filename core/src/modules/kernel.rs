@@ -19,10 +19,6 @@ pub fn read_kernel() -> Option<String> {
 }
 
 pub fn parse_kernel(content: &str) -> Option<String> {
-    parse_kernel_version(content)
-}
-
-pub fn parse_kernel_version(content: &str) -> Option<String> {
     let mut words = content.split_whitespace();
     if words.next()? == "Linux" && words.next()? == "version" {
         words.next().map(|v| v.to_string())
@@ -40,10 +36,6 @@ mod tests {
         let fixture = "Linux version 6.8.5-301.fc40.x86_64 (mockbuild@...) (gcc ...) #1 SMP ...";
         assert_eq!(
             parse_kernel(fixture),
-            Some("6.8.5-301.fc40.x86_64".to_string())
-        );
-        assert_eq!(
-            parse_kernel_version(fixture),
             Some("6.8.5-301.fc40.x86_64".to_string())
         );
     }

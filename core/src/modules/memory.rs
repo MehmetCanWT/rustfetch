@@ -9,13 +9,32 @@ impl Module for Memory {
 
     fn detect(&self) -> Option<Info> {
         let content = read_meminfo()?;
-        let value = parse_meminfo(&content)?;
+        let value = parse_meminfo_with_arc(&content, read_zfs_arc_kb())?;
         Some(Info::new("Memory", value))
     }
 }
 
 fn read_meminfo() -> Option<String> {
     std::fs::read_to_string("/proc/meminfo").ok()
+}
+
+fn read_zfs_arc_kb() -> u64 {
+    let Ok(arc_content) = std::fs::read_to_string("/proc/spl/kstat/zfs/arcstats") else {
+        return 0;
+    };
+    for line in arc_content.lines() {
+        let mut parts = line.split_whitespace();
+        if parts.next() == Some("size") {
+            if let Some(arc_kb) = parts
+                .nth(1)
+                .and_then(|v| v.parse::<u64>().ok())
+                .map(|b| b / 1024)
+            {
+                return arc_kb;
+            }
+        }
+    }
+    0
 }
 
 pub fn format_kb(kb: u64) -> String {
@@ -35,6 +54,10 @@ fn parse_kb_line(rest: &str) -> Option<u64> {
 }
 
 pub fn parse_meminfo(content: &str) -> Option<String> {
+    parse_meminfo_with_arc(content, 0)
+}
+
+fn parse_meminfo_with_arc(content: &str, zfs_arc_kb: u64) -> Option<String> {
     let mut mem_total = None;
     let mut mem_available = None;
 
@@ -53,28 +76,9 @@ pub fn parse_meminfo(content: &str) -> Option<String> {
 
     let total = mem_total?;
     let available = mem_available?;
-    let mut used = total.checked_sub(available)?;
-
-    if let Ok(arc_content) = std::fs::read_to_string("/proc/spl/kstat/zfs/arcstats") {
-        for line in arc_content.lines() {
-            let mut parts = line.split_whitespace();
-            if parts.next() == Some("size") {
-                if let Some(arc_kb) = parts
-                    .nth(1)
-                    .and_then(|v| v.parse::<u64>().ok())
-                    .map(|b| b / 1024)
-                {
-                    used = used.saturating_sub(arc_kb);
-                }
-            }
-        }
-    }
+    let used = total.checked_sub(available)?.saturating_sub(zfs_arc_kb);
 
     Some(format!("{} / {}", format_kb(used), format_kb(total)))
-}
-
-pub fn parse_memory(content: &str) -> Option<String> {
-    parse_meminfo(content)
 }
 
 #[cfg(test)]

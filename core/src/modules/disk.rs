@@ -30,14 +30,6 @@ pub fn format_disk_usage(total_bytes: u64, free_bytes: u64) -> Option<String> {
     Some(format!("{used_gib:.1} GiB / {total_gib:.1} GiB ({pct}%)"))
 }
 
-pub fn parse_disk_usage(total_bytes: u64, free_bytes: u64) -> Option<String> {
-    format_disk_usage(total_bytes, free_bytes)
-}
-
-pub fn parse_disk(total_bytes: u64, free_bytes: u64) -> Option<String> {
-    format_disk_usage(total_bytes, free_bytes)
-}
-
 /// Query the filesystem using `libc::statvfs` for the given path.
 ///
 /// Returns `Some((total_bytes, free_bytes))` on success, or `None` if `statvfs` fails
@@ -87,10 +79,6 @@ mod tests {
 
         let formatted = format_disk_usage(total_bytes, free_bytes);
         assert_eq!(formatted, Some("45.2 GiB / 237.9 GiB (19%)".to_string()));
-
-        // Verify parse_disk and parse_disk_usage aliases
-        assert_eq!(parse_disk(total_bytes, free_bytes), formatted);
-        assert_eq!(parse_disk_usage(total_bytes, free_bytes), formatted);
     }
 
     #[test]

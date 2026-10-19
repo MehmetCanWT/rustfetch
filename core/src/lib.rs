@@ -5,8 +5,7 @@ pub mod modules;
 
 pub use ascii::apply_neofetch_colors;
 pub use config::{
-    default_icon_for_module, distro_icon, make_progress_bar, BorderCharsConfig, BorderImageConfig,
-    Config,
+    default_icon_for_module, distro_icon, BorderCharsConfig, BorderImageConfig, Config,
 };
 pub use modules::{all_modules, module_by_name};
 

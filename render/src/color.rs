@@ -1,8 +1,6 @@
 use fast_image_resize as fr;
-use fast_image_resize::Image;
 use image::ImageReader;
 use std::collections::HashMap;
-use std::num::NonZeroU32;
 
 fn load_and_sample_image(path: &str) -> Option<HashMap<(u8, u8, u8), u32>> {
     let img_reader = ImageReader::open(path).ok()?.with_guessed_format().ok()?;
@@ -28,20 +26,14 @@ fn load_and_sample_image(path: &str) -> Option<HashMap<(u8, u8, u8), u32>> {
         })
         .collect();
 
-    let src_w = NonZeroU32::new(orig_w)?;
-    let src_h = NonZeroU32::new(orig_h)?;
-    let src_image = Image::from_vec_u8(src_w, src_h, composited_raw, fr::PixelType::U8x4).ok()?;
-
-    let target_w = NonZeroU32::new(60)?;
-    let target_h = NonZeroU32::new(60)?;
-    let mut dst_image = Image::new(target_w, target_h, fr::PixelType::U8x4);
-
-    let mut resizer = fr::Resizer::new(fr::ResizeAlg::Convolution(fr::FilterType::Bilinear));
-    resizer
-        .resize(&src_image.view(), &mut dst_image.view_mut())
-        .ok()?;
-
-    let buffer = dst_image.buffer();
+    let buffer = crate::image::resize_rgba(
+        composited_raw,
+        orig_w,
+        orig_h,
+        60,
+        60,
+        fr::FilterType::Bilinear,
+    )?;
     let mut color_counts: HashMap<(u8, u8, u8), u32> = HashMap::new();
     for &[r, g, b, _] in buffer.as_chunks::<4>().0 {
         let qr = (r / 4) * 4;

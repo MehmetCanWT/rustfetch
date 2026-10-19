@@ -40,23 +40,12 @@ pub fn parse_terminal(
         })
 }
 
-/// Helper function to parse terminal using an environment lookup closure.
-pub fn parse_terminal_env<F: Fn(&str) -> Option<String>>(get_var: F) -> Option<String> {
-    parse_terminal(
-        get_var("TERM_PROGRAM").as_deref(),
-        get_var("KITTY_WINDOW_ID").as_deref(),
-        get_var("TERMINAL_EMULATOR").as_deref(),
-        get_var("TERM").as_deref(),
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn test_parse_terminal_term_program_precedence() {
-        // TERM_PROGRAM should take precedence over all other variables
         let result = parse_terminal(
             Some("ghostty"),
             Some("123"),
@@ -71,14 +60,12 @@ mod tests {
 
     #[test]
     fn test_parse_terminal_kitty_window_id() {
-        // In Kitty on Fedora Linux, KITTY_WINDOW_ID is set (e.g., "1")
         let result = parse_terminal(None, Some("1"), None, Some("xterm-kitty"));
         assert_eq!(result.as_deref(), Some("kitty"));
     }
 
     #[test]
     fn test_parse_terminal_emulator() {
-        // JetBrains embedded terminal sets TERMINAL_EMULATOR
         let result = parse_terminal(
             None,
             None,
@@ -90,7 +77,6 @@ mod tests {
 
     #[test]
     fn test_parse_terminal_term_fallback() {
-        // Generic fallback to TERM on Fedora Linux
         let result = parse_terminal(None, None, None, Some("xterm-256color"));
         assert_eq!(result.as_deref(), Some("xterm-256color"));
     }
@@ -103,15 +89,5 @@ mod tests {
             None
         );
         assert_eq!(parse_terminal(None, None, None, None), None);
-    }
-
-    #[test]
-    fn test_parse_terminal_env_helper() {
-        let env_map = |key: &str| match key {
-            "KITTY_WINDOW_ID" => Some("42".to_string()),
-            "TERM" => Some("xterm-kitty".to_string()),
-            _ => None,
-        };
-        assert_eq!(parse_terminal_env(env_map).as_deref(), Some("kitty"));
     }
 }

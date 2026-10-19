@@ -43,11 +43,6 @@ pub fn parse_swap(content: &str) -> Option<String> {
     Some(format!("{} / {}", format_kb(used), format_kb(total)))
 }
 
-/// Alias for [`parse_swap`].
-pub fn parse_meminfo(content: &str) -> Option<String> {
-    parse_swap(content)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

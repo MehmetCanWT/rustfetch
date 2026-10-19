@@ -41,10 +41,6 @@ pub fn parse_cpuinfo(content: &str) -> Option<String> {
     Some(format!("{model} ({core_count})"))
 }
 
-pub fn parse_cpu(content: &str) -> Option<String> {
-    parse_cpuinfo(content)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

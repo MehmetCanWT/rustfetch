@@ -22,15 +22,10 @@ pub fn read_os() -> Option<String> {
 
 fn unquote(val: &str) -> &str {
     let s = val.trim();
-    if (s.starts_with('"') && s.ends_with('"')) || (s.starts_with('\'') && s.ends_with('\'')) {
-        if s.len() >= 2 {
-            &s[1..s.len() - 1]
-        } else {
-            s
-        }
-    } else {
-        s
-    }
+    s.strip_prefix('"')
+        .and_then(|s| s.strip_suffix('"'))
+        .or_else(|| s.strip_prefix('\'').and_then(|s| s.strip_suffix('\'')))
+        .unwrap_or(s)
 }
 
 pub fn parse_os(content: &str) -> Option<String> {
@@ -70,10 +65,6 @@ pub fn parse_os(content: &str) -> Option<String> {
     }
 }
 
-pub fn parse_os_release(content: &str) -> Option<String> {
-    parse_os(content)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -106,10 +97,6 @@ VARIANT_ID=workstation
 "#;
         assert_eq!(
             parse_os(fixture),
-            Some("Fedora Linux 42 (Workstation Edition)".to_string())
-        );
-        assert_eq!(
-            parse_os_release(fixture),
             Some("Fedora Linux 42 (Workstation Edition)".to_string())
         );
     }

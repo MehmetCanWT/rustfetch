@@ -703,57 +703,28 @@ fn run_once(
     };
 
     let (logo_block, distro_color) = if show_logo && resolved_image_path.is_none() {
-        if let Some(ascii_p) = custom_ascii_path {
-            let p = std::path::Path::new(ascii_p);
-            match std::fs::read_to_string(p) {
-                Ok(raw) if !raw.is_empty() => {
-                    let mut processed = raw;
-                    if let Some(colors) = &config.general.logo.colors {
-                        let codes: Vec<String> =
-                            colors.iter().map(|c| layout::color_code(c)).collect();
-                        let refs: Vec<&str> = codes.iter().map(|s| s.as_str()).collect();
-                        processed = rustfetch_core::apply_neofetch_colors(&processed, &refs);
-                    }
-                    let lines: Vec<String> = processed.lines().map(|s| s.to_string()).collect();
-                    let w = lines
-                        .iter()
-                        .map(|l| layout::strip_ansi_width(l))
-                        .max()
-                        .unwrap_or(0);
-                    (Some(LogoBlock { lines, width: w }), None)
+        let custom_block = custom_ascii_path
+            .and_then(|ascii_p| {
+                let expanded = shellexpand::tilde(ascii_p);
+                std::fs::read_to_string(expanded.as_ref()).ok()
+            })
+            .filter(|raw| !raw.is_empty())
+            .map(|mut processed| {
+                if let Some(colors) = &config.general.logo.colors {
+                    let codes: Vec<String> = colors.iter().map(|c| layout::color_code(c)).collect();
+                    let refs: Vec<&str> = codes.iter().map(|s| s.as_str()).collect();
+                    processed = rustfetch_core::apply_neofetch_colors(&processed, &refs);
                 }
-                _ => {
-                    let distro_name = if config.general.logo.distro == "auto" {
-                        detect_distro_name()
-                    } else {
-                        config.general.logo.distro.clone()
-                    };
-                    let logo = resolve_distro_logo(&distro_name, config.general.padding);
-                    let logo_colors = config.general.logo.colors.as_ref().map(|colors| {
-                        colors
-                            .iter()
-                            .map(|c| layout::color_code(c))
-                            .collect::<Vec<String>>()
-                    });
-                    let colored_lines = if let Some(colors) = &logo_colors {
-                        let refs: Vec<&str> = colors.iter().map(|s| s.as_str()).collect();
-                        logo.colored_lines_with_custom(None, Some(&refs))
-                    } else if let Some(ref dc) = dynamic_color {
-                        let dc_code = layout::color_code(dc);
-                        logo.colored_lines_with_custom(Some(&dc_code), None)
-                    } else {
-                        logo.colored_lines()
-                    };
-                    (
-                        Some(LogoBlock {
-                            lines: colored_lines,
-                            width: logo.width,
-                        }),
-                        Some(logo.color),
-                    )
-                }
-            }
-        } else {
+                let lines: Vec<String> = processed.lines().map(|s| s.to_string()).collect();
+                let width = lines
+                    .iter()
+                    .map(|l| layout::strip_ansi_width(l))
+                    .max()
+                    .unwrap_or(0);
+                (Some(LogoBlock { lines, width }), None)
+            });
+
+        custom_block.unwrap_or_else(|| {
             let distro_name = if config.general.logo.distro == "auto" {
                 detect_distro_name()
             } else {
@@ -782,7 +753,7 @@ fn run_once(
                 }),
                 Some(logo.color),
             )
-        }
+        })
     } else {
         (None, None)
     };
@@ -1320,17 +1291,148 @@ extern "C" fn handle_sigint(_: libc::c_int) {
     }
 }
 
+struct TermGuard {
+    #[cfg(unix)]
+    orig_termios: Option<libc::termios>,
+}
+
+impl TermGuard {
+    fn enter() -> Self {
+        use crossterm::{
+            cursor::{Hide, MoveTo},
+            execute,
+            terminal::{Clear, ClearType},
+        };
+        #[cfg(unix)]
+        let mut orig_termios = None;
+        #[cfg(unix)]
+        unsafe {
+            let mut orig: libc::termios = std::mem::zeroed();
+            if libc::tcgetattr(libc::STDIN_FILENO, &mut orig) == 0 {
+                orig_termios = Some(orig);
+                ORIG_TERMIOS = Some(orig);
+                let mut raw = orig;
+                // Retain ISIG so Ctrl+C sends SIGINT natively without buffering
+                raw.c_lflag &= !(libc::ICANON | libc::ECHO);
+                raw.c_cc[libc::VMIN] = 0;
+                raw.c_cc[libc::VTIME] = 0;
+                libc::tcsetattr(libc::STDIN_FILENO, libc::TCSAFLUSH, &raw);
+            }
+            libc::signal(
+                libc::SIGINT,
+                handle_sigint as *const () as libc::sighandler_t,
+            );
+            libc::signal(
+                libc::SIGTERM,
+                handle_sigint as *const () as libc::sighandler_t,
+            );
+        }
+        #[cfg(not(unix))]
+        let _ = crossterm::terminal::enable_raw_mode();
+
+        let mut stdout = std::io::stdout();
+        let _ = execute!(stdout, Hide, Clear(ClearType::All), MoveTo(0, 0));
+        let _ = stdout.flush();
+
+        Self {
+            #[cfg(unix)]
+            orig_termios,
+        }
+    }
+}
+
+impl Drop for TermGuard {
+    fn drop(&mut self) {
+        #[cfg(unix)]
+        unsafe {
+            if let Some(ref orig) = self.orig_termios {
+                libc::tcsetattr(libc::STDIN_FILENO, libc::TCSANOW, orig);
+            }
+            libc::signal(libc::SIGINT, libc::SIG_DFL);
+            libc::signal(libc::SIGTERM, libc::SIG_DFL);
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = crossterm::terminal::disable_raw_mode();
+        }
+        let _ = crossterm::execute!(std::io::stdout(), crossterm::cursor::Show);
+        let _ = std::io::stdout().flush();
+    }
+}
+
+fn compose_animated_frame(
+    config: &Config,
+    left_lines: &[String],
+    (left_width, left_rows): (usize, usize),
+    pad_short_left_lines: bool,
+    (right_lines, right_width): (&[String], usize),
+    (term_cols, term_rows): (usize, usize),
+) -> String {
+    let layout_stacked = term_cols < left_width + layout::LOGO_GAP + right_width;
+    let mut frame_buf = String::with_capacity(term_cols * term_rows * 4 + 64);
+    frame_buf.push_str("\x1b[H");
+
+    if layout_stacked {
+        let left_pad = if config.general.center {
+            " ".repeat(term_cols.saturating_sub(left_width) / 2)
+        } else {
+            " ".repeat(config.general.padding)
+        };
+        for line in left_lines {
+            frame_buf.push_str(&left_pad);
+            frame_buf.push_str(line);
+            frame_buf.push_str("\x1b[K\r\n");
+        }
+        frame_buf.push_str("\x1b[K\r\n");
+        let info_pad = if config.general.center {
+            " ".repeat(term_cols.saturating_sub(right_width) / 2)
+        } else {
+            " ".repeat(config.general.padding)
+        };
+        for line in right_lines {
+            frame_buf.push_str(&info_pad);
+            frame_buf.push_str(line);
+            frame_buf.push_str("\x1b[K\r\n");
+        }
+    } else {
+        let total_content_w = left_width + layout::LOGO_GAP + right_width;
+        let left_pad = if config.general.center {
+            " ".repeat(term_cols.saturating_sub(total_content_w) / 2)
+        } else {
+            " ".repeat(config.general.padding)
+        };
+        let total_rows = left_rows.max(right_lines.len());
+        let gap = " ".repeat(layout::LOGO_GAP);
+
+        for r in 0..total_rows {
+            frame_buf.push_str(&left_pad);
+            if let Some(line) = left_lines.get(r) {
+                frame_buf.push_str(line);
+                if pad_short_left_lines {
+                    let line_w = layout::strip_ansi_width(line);
+                    if line_w < left_width {
+                        frame_buf.push_str(&" ".repeat(left_width - line_w));
+                    }
+                }
+            } else {
+                frame_buf.push_str(&" ".repeat(left_width));
+            }
+            frame_buf.push_str(&gap);
+            if let Some(right_line) = right_lines.get(r) {
+                frame_buf.push_str(right_line);
+            }
+            frame_buf.push_str("\x1b[K\r\n");
+        }
+    }
+    frame_buf
+}
+
 fn run_3d(
     config: &Config,
     cli: &Cli,
     modules: &[Box<dyn Module>],
     configs: &[rustfetch_core::config::ModuleConfig],
 ) {
-    use crossterm::{
-        cursor::Hide,
-        execute,
-        terminal::{Clear, ClearType},
-    };
     use std::time::Duration;
 
     let distro_name = if config.general.logo.distro == "auto" {
@@ -1371,29 +1473,22 @@ fn run_3d(
         .as_deref()
         .or(config.general.logo.ascii_path.as_deref());
 
-    let (model, distro_outer, distro_inner) = if let Some(ascii_p) = custom_ascii_path {
-        let p = std::path::Path::new(ascii_p);
-        if let Ok(custom_lines) = rustfetch_core::ascii::load_ascii_lines(p) {
-            if !custom_lines.is_empty() {
-                let m = rustfetch_render::three_d::Model3D::from_ascii_lines(
-                    &custom_lines,
-                    size_scale,
-                    depth_scale,
-                    shading_mode,
-                );
-                (m, "\x1b[38;2;81;190;240m", "\x1b[38;2;255;255;255m")
-            } else {
-                let colored_logo_lines = logo.colored_lines();
-                let m = rustfetch_render::three_d::Model3D::from_ascii_lines(
-                    &colored_logo_lines,
-                    size_scale,
-                    depth_scale,
-                    shading_mode,
-                );
-                let (d_outer, d_inner) = rustfetch_render::three_d::distro_3d_colors(&distro_name);
-                (m, d_outer, d_inner)
-            }
-        } else {
+    let (model, distro_outer, distro_inner) = custom_ascii_path
+        .and_then(|ascii_p| {
+            let expanded = shellexpand::tilde(ascii_p);
+            rustfetch_core::ascii::load_ascii_lines(std::path::Path::new(expanded.as_ref())).ok()
+        })
+        .filter(|lines| !lines.is_empty())
+        .map(|custom_lines| {
+            let m = rustfetch_render::three_d::Model3D::from_ascii_lines(
+                &custom_lines,
+                size_scale,
+                depth_scale,
+                shading_mode,
+            );
+            (m, "\x1b[38;2;81;190;240m", "\x1b[38;2;255;255;255m")
+        })
+        .unwrap_or_else(|| {
             let colored_logo_lines = logo.colored_lines();
             let m = rustfetch_render::three_d::Model3D::from_ascii_lines(
                 &colored_logo_lines,
@@ -1403,18 +1498,7 @@ fn run_3d(
             );
             let (d_outer, d_inner) = rustfetch_render::three_d::distro_3d_colors(&distro_name);
             (m, d_outer, d_inner)
-        }
-    } else {
-        let colored_logo_lines = logo.colored_lines();
-        let m = rustfetch_render::three_d::Model3D::from_ascii_lines(
-            &colored_logo_lines,
-            size_scale,
-            depth_scale,
-            shading_mode,
-        );
-        let (d_outer, d_inner) = rustfetch_render::three_d::distro_3d_colors(&distro_name);
-        (m, d_outer, d_inner)
-    };
+        });
 
     let mut renderer = rustfetch_render::three_d::Renderer3D::new(shading_mode, shading_chars);
     renderer.size_scale = size_scale;
@@ -1478,70 +1562,8 @@ fn run_3d(
     let mut info_lines = gather_info_lines(config, modules, configs, None, Some(distro_outer));
     let mut right_lines = build_right_lines(&info_lines, &render_opts);
 
-    // RAII guard to guarantee raw mode is disabled and cursor restored on exit or panic
-    struct TermGuard {
-        #[cfg(unix)]
-        orig_termios: Option<libc::termios>,
-    }
-    impl Drop for TermGuard {
-        fn drop(&mut self) {
-            #[cfg(unix)]
-            unsafe {
-                if let Some(ref orig) = self.orig_termios {
-                    libc::tcsetattr(libc::STDIN_FILENO, libc::TCSANOW, orig);
-                }
-                libc::signal(libc::SIGINT, libc::SIG_DFL);
-                libc::signal(libc::SIGTERM, libc::SIG_DFL);
-            }
-            #[cfg(not(unix))]
-            {
-                let _ = crossterm::terminal::disable_raw_mode();
-            }
-            let _ = crossterm::execute!(std::io::stdout(), crossterm::cursor::Show);
-            let _ = std::io::stdout().flush();
-        }
-    }
-
-    #[cfg(unix)]
-    let mut orig_termios = None;
-    #[cfg(unix)]
-    unsafe {
-        let mut orig: libc::termios = std::mem::zeroed();
-        if libc::tcgetattr(libc::STDIN_FILENO, &mut orig) == 0 {
-            orig_termios = Some(orig);
-            ORIG_TERMIOS = Some(orig);
-            let mut raw = orig;
-            // Retain ISIG so Ctrl+C sends SIGINT natively without buffering
-            raw.c_lflag &= !(libc::ICANON | libc::ECHO);
-            raw.c_cc[libc::VMIN] = 0;
-            raw.c_cc[libc::VTIME] = 0;
-            libc::tcsetattr(libc::STDIN_FILENO, libc::TCSAFLUSH, &raw);
-        }
-        libc::signal(
-            libc::SIGINT,
-            handle_sigint as *const () as libc::sighandler_t,
-        );
-        libc::signal(
-            libc::SIGTERM,
-            handle_sigint as *const () as libc::sighandler_t,
-        );
-    }
-    #[cfg(not(unix))]
-    let _ = crossterm::terminal::enable_raw_mode();
-
-    let _guard = TermGuard {
-        #[cfg(unix)]
-        orig_termios,
-    };
-
+    let _guard = TermGuard::enter();
     let mut stdout = std::io::stdout();
-    let _ = execute!(
-        stdout,
-        Hide,
-        Clear(ClearType::All),
-        crossterm::cursor::MoveTo(0, 0)
-    );
-    let _ = stdout.flush();
 
     let mut angle_x = 0.0f32;
     let mut angle_y = 0.0f32;
@@ -1554,12 +1576,15 @@ fn run_3d(
     let running_bg = running.clone();
 
     let _bg_handle = std::thread::spawn(move || {
+        let (bg_modules, bg_configs): (Vec<Box<dyn Module>>, Vec<_>) = bg_configs
+            .into_iter()
+            .filter_map(|mc| module_by_name(&mc.name).map(|m| (m, mc)))
+            .unzip();
         while running_bg.load(std::sync::atomic::Ordering::Relaxed) {
             std::thread::sleep(Duration::from_millis(1000));
             if !running_bg.load(std::sync::atomic::Ordering::Relaxed) {
                 break;
             }
-            let bg_modules = rustfetch_core::all_modules();
             let new_info = gather_info_lines(
                 &bg_config,
                 &bg_modules,
@@ -1601,27 +1626,7 @@ fn run_3d(
             right_lines = build_right_lines(&info_lines, &render_opts);
         }
 
-        let env_cols = std::env::var("COLUMNS").ok().and_then(|s| s.parse().ok());
-        let env_rows = std::env::var("LINES").ok().and_then(|s| s.parse().ok());
-
-        let (term_cols, term_rows) = match (env_cols, env_rows) {
-            (Some(c), Some(r)) => (c, r),
-            (Some(c), None) => (
-                c,
-                crossterm::terminal::size()
-                    .map(|(_, r)| r as usize)
-                    .unwrap_or(24),
-            ),
-            (None, Some(r)) => (
-                crossterm::terminal::size()
-                    .map(|(c, _)| c as usize)
-                    .unwrap_or(80),
-                r,
-            ),
-            (None, None) => crossterm::terminal::size()
-                .map(|(c, r)| (c as usize, r as usize))
-                .unwrap_or((80, 24)),
-        };
+        let (term_cols, term_rows) = layout::terminal_size();
 
         // Compute layout
         let right_width = right_lines
@@ -1670,56 +1675,14 @@ fn run_3d(
             }
         }
 
-        // Compose frame into single buffer with \x1b[H
-        let mut frame_buf = String::with_capacity(term_cols * term_rows * 4 + 64);
-        frame_buf.push_str("\x1b[H");
-
-        if layout_stacked {
-            let left_pad = if config.general.center {
-                " ".repeat(term_cols.saturating_sub(canvas_cols) / 2)
-            } else {
-                " ".repeat(config.general.padding)
-            };
-            for line in &logo_3d {
-                frame_buf.push_str(&left_pad);
-                frame_buf.push_str(line);
-                frame_buf.push_str("\x1b[K\r\n");
-            }
-            frame_buf.push_str("\x1b[K\r\n");
-            let info_pad = if config.general.center {
-                " ".repeat(term_cols.saturating_sub(right_width) / 2)
-            } else {
-                " ".repeat(config.general.padding)
-            };
-            for line in &right_lines {
-                frame_buf.push_str(&info_pad);
-                frame_buf.push_str(line);
-                frame_buf.push_str("\x1b[K\r\n");
-            }
-        } else {
-            let total_content_w = canvas_cols + layout::LOGO_GAP + right_width;
-            let left_pad = if config.general.center {
-                " ".repeat(term_cols.saturating_sub(total_content_w) / 2)
-            } else {
-                " ".repeat(config.general.padding)
-            };
-            let total_rows = canvas_rows.max(right_lines.len());
-            let gap = " ".repeat(layout::LOGO_GAP);
-
-            for r in 0..total_rows {
-                frame_buf.push_str(&left_pad);
-                if r < logo_3d.len() {
-                    frame_buf.push_str(&logo_3d[r]);
-                } else {
-                    frame_buf.push_str(&" ".repeat(canvas_cols));
-                }
-                frame_buf.push_str(&gap);
-                if r < right_lines.len() {
-                    frame_buf.push_str(&right_lines[r]);
-                }
-                frame_buf.push_str("\x1b[K\r\n");
-            }
-        }
+        let frame_buf = compose_animated_frame(
+            config,
+            &logo_3d,
+            (canvas_cols, canvas_rows),
+            false,
+            (&right_lines, right_width),
+            (term_cols, term_rows),
+        );
 
         let _ = stdout.write_all(frame_buf.as_bytes());
         let _ = stdout.flush();
@@ -1837,11 +1800,6 @@ fn run_ascii_animation(
     modules: &[Box<dyn Module>],
     configs: &[rustfetch_core::config::ModuleConfig],
 ) {
-    use crossterm::{
-        cursor::Hide,
-        execute,
-        terminal::{Clear, ClearType},
-    };
     use std::time::{Duration, Instant};
 
     let anim_path = cli
@@ -1859,7 +1817,8 @@ fn run_ascii_animation(
         }
     };
 
-    let p = std::path::Path::new(path_str);
+    let expanded = shellexpand::tilde(path_str);
+    let p = std::path::Path::new(expanded.as_ref());
     let frames = match rustfetch_core::ascii::load_ascii_frames(p) {
         Ok(f) if !f.is_empty() => f,
         Ok(_) => {
@@ -1923,69 +1882,8 @@ fn run_ascii_animation(
     let mut info_lines = gather_info_lines(config, modules, configs, None, Some(anim_distro_color));
     let mut right_lines = build_right_lines(&info_lines, &render_opts);
 
-    // RAII guard to guarantee raw mode is disabled and cursor restored on exit or panic
-    struct TermGuard {
-        #[cfg(unix)]
-        orig_termios: Option<libc::termios>,
-    }
-    impl Drop for TermGuard {
-        fn drop(&mut self) {
-            #[cfg(unix)]
-            unsafe {
-                if let Some(ref orig) = self.orig_termios {
-                    libc::tcsetattr(libc::STDIN_FILENO, libc::TCSANOW, orig);
-                }
-                libc::signal(libc::SIGINT, libc::SIG_DFL);
-                libc::signal(libc::SIGTERM, libc::SIG_DFL);
-            }
-            #[cfg(not(unix))]
-            {
-                let _ = crossterm::terminal::disable_raw_mode();
-            }
-            let _ = crossterm::execute!(std::io::stdout(), crossterm::cursor::Show);
-            let _ = std::io::stdout().flush();
-        }
-    }
-
-    #[cfg(unix)]
-    let mut orig_termios = None;
-    #[cfg(unix)]
-    unsafe {
-        let mut orig: libc::termios = std::mem::zeroed();
-        if libc::tcgetattr(libc::STDIN_FILENO, &mut orig) == 0 {
-            orig_termios = Some(orig);
-            ORIG_TERMIOS = Some(orig);
-            let mut raw = orig;
-            raw.c_lflag &= !(libc::ICANON | libc::ECHO);
-            raw.c_cc[libc::VMIN] = 0;
-            raw.c_cc[libc::VTIME] = 0;
-            libc::tcsetattr(libc::STDIN_FILENO, libc::TCSAFLUSH, &raw);
-        }
-        libc::signal(
-            libc::SIGINT,
-            handle_sigint as *const () as libc::sighandler_t,
-        );
-        libc::signal(
-            libc::SIGTERM,
-            handle_sigint as *const () as libc::sighandler_t,
-        );
-    }
-    #[cfg(not(unix))]
-    let _ = crossterm::terminal::enable_raw_mode();
-
-    let _guard = TermGuard {
-        #[cfg(unix)]
-        orig_termios,
-    };
-
+    let _guard = TermGuard::enter();
     let mut stdout = std::io::stdout();
-    let _ = execute!(
-        stdout,
-        Hide,
-        Clear(ClearType::All),
-        crossterm::cursor::MoveTo(0, 0)
-    );
-    let _ = stdout.flush();
 
     let mut frame_idx = 0usize;
     let mut last_metric_refresh = Instant::now();
@@ -2013,27 +1911,7 @@ fn run_ascii_animation(
             last_metric_refresh = Instant::now();
         }
 
-        let env_cols = std::env::var("COLUMNS").ok().and_then(|s| s.parse().ok());
-        let env_rows = std::env::var("LINES").ok().and_then(|s| s.parse().ok());
-
-        let (term_cols, term_rows) = match (env_cols, env_rows) {
-            (Some(c), Some(r)) => (c, r),
-            (Some(c), None) => (
-                c,
-                crossterm::terminal::size()
-                    .map(|(_, r)| r as usize)
-                    .unwrap_or(24),
-            ),
-            (None, Some(r)) => (
-                crossterm::terminal::size()
-                    .map(|(c, _)| c as usize)
-                    .unwrap_or(80),
-                r,
-            ),
-            (None, None) => crossterm::terminal::size()
-                .map(|(c, r)| (c as usize, r as usize))
-                .unwrap_or((80, 24)),
-        };
+        let (term_cols, term_rows) = layout::terminal_size();
 
         let current_frame = &frames[frame_idx % frames.len()];
         let frame_width = current_frame
@@ -2048,63 +1926,14 @@ fn run_ascii_animation(
             .max()
             .unwrap_or(30);
 
-        let needed_cols = frame_width + layout::LOGO_GAP + right_width;
-        let layout_stacked = term_cols < needed_cols;
-
-        let mut frame_buf = String::with_capacity(term_cols * term_rows * 4 + 64);
-        frame_buf.push_str("\x1b[H");
-
-        if layout_stacked {
-            let left_pad = if config.general.center {
-                " ".repeat(term_cols.saturating_sub(frame_width) / 2)
-            } else {
-                " ".repeat(config.general.padding)
-            };
-            for line in current_frame {
-                frame_buf.push_str(&left_pad);
-                frame_buf.push_str(line);
-                frame_buf.push_str("\x1b[K\r\n");
-            }
-            frame_buf.push_str("\x1b[K\r\n");
-            let info_pad = if config.general.center {
-                " ".repeat(term_cols.saturating_sub(right_width) / 2)
-            } else {
-                " ".repeat(config.general.padding)
-            };
-            for line in &right_lines {
-                frame_buf.push_str(&info_pad);
-                frame_buf.push_str(line);
-                frame_buf.push_str("\x1b[K\r\n");
-            }
-        } else {
-            let total_content_w = frame_width + layout::LOGO_GAP + right_width;
-            let left_pad = if config.general.center {
-                " ".repeat(term_cols.saturating_sub(total_content_w) / 2)
-            } else {
-                " ".repeat(config.general.padding)
-            };
-            let total_rows = current_frame.len().max(right_lines.len());
-            let gap = " ".repeat(layout::LOGO_GAP);
-
-            for r in 0..total_rows {
-                frame_buf.push_str(&left_pad);
-                if r < current_frame.len() {
-                    let line = &current_frame[r];
-                    frame_buf.push_str(line);
-                    let line_w = layout::strip_ansi_width(line);
-                    if line_w < frame_width {
-                        frame_buf.push_str(&" ".repeat(frame_width - line_w));
-                    }
-                } else {
-                    frame_buf.push_str(&" ".repeat(frame_width));
-                }
-                frame_buf.push_str(&gap);
-                if r < right_lines.len() {
-                    frame_buf.push_str(&right_lines[r]);
-                }
-                frame_buf.push_str("\x1b[K\r\n");
-            }
-        }
+        let frame_buf = compose_animated_frame(
+            config,
+            current_frame,
+            (frame_width, current_frame.len()),
+            true,
+            (&right_lines, right_width),
+            (term_cols, term_rows),
+        );
 
         let _ = stdout.write_all(frame_buf.as_bytes());
         let _ = stdout.flush();
@@ -2186,9 +2015,18 @@ fn run_live(
     };
     use std::time::Duration;
 
+    struct LiveGuard;
+    impl Drop for LiveGuard {
+        fn drop(&mut self) {
+            let _ = disable_raw_mode();
+            let _ = execute!(std::io::stdout(), Show, LeaveAlternateScreen);
+        }
+    }
+
     let mut stdout = std::io::stdout();
     let _ = execute!(stdout, EnterAlternateScreen, Hide);
     let _ = enable_raw_mode();
+    let _guard = LiveGuard;
 
     loop {
         let _ = queue!(stdout, Clear(ClearType::All), MoveTo(0, 0));
@@ -2216,9 +2054,6 @@ fn run_live(
             }
         }
     }
-
-    let _ = disable_raw_mode();
-    let _ = execute!(stdout, Show, LeaveAlternateScreen);
 }
 
 fn build_header() -> Option<String> {

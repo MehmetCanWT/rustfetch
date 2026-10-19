@@ -14,13 +14,9 @@ pub use image::{
     render_background, render_background_ex, render_halfblock, render_halfblock_ex,
     BackgroundOptions,
 };
-pub use kitty::{clear_kitty_images, print_kitty, print_kitty_ex, print_kitty_png};
-pub use sixel::{encode_sixel, render_sixel, render_sixel_ex};
+pub use kitty::{clear_kitty_images, print_kitty, print_kitty_ex};
+pub use sixel::{encode_sixel, render_sixel_ex};
 pub use terminal::{cell_size_or_default, get_cell_size, supports_kitty, supports_sixel};
-
-pub fn render_image(path: &str, target_cols: usize) -> Option<usize> {
-    image::render(path, target_cols)
-}
 
 pub fn render_image_ex(
     path: &str,

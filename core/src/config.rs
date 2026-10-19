@@ -105,132 +105,28 @@ impl Default for BorderCharsConfig {
 
 impl BorderCharsConfig {
     pub fn from_style(style: &str) -> Self {
-        match style.to_lowercase().as_str() {
-            "single" | "light" => Self {
-                top_left: "┌".to_string(),
-                top: "─".to_string(),
-                top_right: "┐".to_string(),
-                right: "│".to_string(),
-                bottom_right: "┘".to_string(),
-                bottom: "─".to_string(),
-                bottom_left: "└".to_string(),
-                left: "│".to_string(),
-                divider_left: "├".to_string(),
-                divider: "─".to_string(),
-                divider_right: "┤".to_string(),
-            },
-            "double" => Self {
-                top_left: "╔".to_string(),
-                top: "═".to_string(),
-                top_right: "╗".to_string(),
-                right: "║".to_string(),
-                bottom_right: "╝".to_string(),
-                bottom: "═".to_string(),
-                bottom_left: "╚".to_string(),
-                left: "║".to_string(),
-                divider_left: "╠".to_string(),
-                divider: "═".to_string(),
-                divider_right: "╣".to_string(),
-            },
-            "thick" | "heavy" => Self {
-                top_left: "┏".to_string(),
-                top: "━".to_string(),
-                top_right: "┓".to_string(),
-                right: "┃".to_string(),
-                bottom_right: "┛".to_string(),
-                bottom: "━".to_string(),
-                bottom_left: "┗".to_string(),
-                left: "┃".to_string(),
-                divider_left: "┣".to_string(),
-                divider: "━".to_string(),
-                divider_right: "┫".to_string(),
-            },
-            "dashed" | "dots" => Self {
-                top_left: "┌".to_string(),
-                top: "╌".to_string(),
-                top_right: "┐".to_string(),
-                right: "┆".to_string(),
-                bottom_right: "┘".to_string(),
-                bottom: "╌".to_string(),
-                bottom_left: "└".to_string(),
-                left: "┆".to_string(),
-                divider_left: "├".to_string(),
-                divider: "╌".to_string(),
-                divider_right: "┤".to_string(),
-            },
-            "brackets" => Self {
-                top_left: "[".to_string(),
-                top: "─".to_string(),
-                top_right: "]".to_string(),
-                right: "│".to_string(),
-                bottom_right: "]".to_string(),
-                bottom: "─".to_string(),
-                bottom_left: "[".to_string(),
-                left: "│".to_string(),
-                divider_left: "[".to_string(),
-                divider: "─".to_string(),
-                divider_right: "]".to_string(),
-            },
-            "ascii" => Self {
-                top_left: "+".to_string(),
-                top: "-".to_string(),
-                top_right: "+".to_string(),
-                right: "|".to_string(),
-                bottom_right: "+".to_string(),
-                bottom: "-".to_string(),
-                bottom_left: "+".to_string(),
-                left: "|".to_string(),
-                divider_left: "+".to_string(),
-                divider: "-".to_string(),
-                divider_right: "+".to_string(),
-            },
-            "block" => Self {
-                top_left: "█".to_string(),
-                top: "▀".to_string(),
-                top_right: "█".to_string(),
-                right: "█".to_string(),
-                bottom_right: "█".to_string(),
-                bottom: "▄".to_string(),
-                bottom_left: "█".to_string(),
-                left: "█".to_string(),
-                divider_left: "█".to_string(),
-                divider: "▀".to_string(),
-                divider_right: "█".to_string(),
-            },
-            _ => Self {
-                top_left: "╭".to_string(),
-                top: "─".to_string(),
-                top_right: "╮".to_string(),
-                right: "│".to_string(),
-                bottom_right: "╯".to_string(),
-                bottom: "─".to_string(),
-                bottom_left: "╰".to_string(),
-                left: "│".to_string(),
-                divider_left: "├".to_string(),
-                divider: "─".to_string(),
-                divider_right: "┤".to_string(),
-            },
-        }
-    }
-
-    pub fn from_str_compact(s: &str) -> Option<Self> {
-        let chars: Vec<char> = s.chars().collect();
-        if chars.len() >= 11 {
-            Some(Self {
-                top_left: chars[0].to_string(),
-                top: chars[1].to_string(),
-                top_right: chars[2].to_string(),
-                right: chars[3].to_string(),
-                bottom_right: chars[4].to_string(),
-                bottom: chars[5].to_string(),
-                bottom_left: chars[6].to_string(),
-                left: chars[7].to_string(),
-                divider_left: chars[8].to_string(),
-                divider: chars[9].to_string(),
-                divider_right: chars[10].to_string(),
-            })
-        } else {
-            None
+        let (tl, t, tr, r, br, b, bl, l, dl, d, dr) = match style.to_lowercase().as_str() {
+            "single" | "light" => ("┌", "─", "┐", "│", "┘", "─", "└", "│", "├", "─", "┤"),
+            "double" => ("╔", "═", "╗", "║", "╝", "═", "╚", "║", "╠", "═", "╣"),
+            "thick" | "heavy" => ("┏", "━", "┓", "┃", "┛", "━", "┗", "┃", "┣", "━", "┫"),
+            "dashed" | "dots" => ("┌", "╌", "┐", "┆", "┘", "╌", "└", "┆", "├", "╌", "┤"),
+            "brackets" => ("[", "─", "]", "│", "]", "─", "[", "│", "[", "─", "]"),
+            "ascii" => ("+", "-", "+", "|", "+", "-", "+", "|", "+", "-", "+"),
+            "block" => ("█", "▀", "█", "█", "█", "▄", "█", "█", "█", "▀", "█"),
+            _ => ("╭", "─", "╮", "│", "╯", "─", "╰", "│", "├", "─", "┤"),
+        };
+        Self {
+            top_left: tl.to_string(),
+            top: t.to_string(),
+            top_right: tr.to_string(),
+            right: r.to_string(),
+            bottom_right: br.to_string(),
+            bottom: b.to_string(),
+            bottom_left: bl.to_string(),
+            left: l.to_string(),
+            divider_left: dl.to_string(),
+            divider: d.to_string(),
+            divider_right: dr.to_string(),
         }
     }
 }
@@ -907,72 +803,13 @@ impl ModuleConfig {
     pub fn new(name: impl Into<String>) -> Self {
         Self {
             name: name.into(),
-            label: None,
-            icon: None,
-            color: None,
-            value: None,
-            format: None,
-            bar: None,
-            bar_width: None,
+            ..Self::default()
         }
-    }
-
-    pub fn with_label(mut self, label: impl Into<String>) -> Self {
-        self.label = Some(label.into());
-        self
-    }
-
-    pub fn with_icon(mut self, icon: impl Into<String>) -> Self {
-        self.icon = Some(icon.into());
-        self
-    }
-
-    pub fn with_color(mut self, color: impl Into<String>) -> Self {
-        self.color = Some(color.into());
-        self
-    }
-
-    pub fn with_value(mut self, value: impl Into<String>) -> Self {
-        self.value = Some(value.into());
-        self
-    }
-
-    pub fn with_format(mut self, format: impl Into<String>) -> Self {
-        self.format = Some(format.into());
-        self
-    }
-
-    pub fn with_bar(mut self, bar: bool) -> Self {
-        self.bar = Some(bar);
-        self
     }
 }
 
-pub fn make_progress_bar(percent: u8, width: usize, colored: bool) -> String {
-    let width = if width == 0 { 10 } else { width };
-    let percent = percent.min(100);
-    let elapsed = ((percent as usize * width) + 50) / 100;
-    let remaining = width.saturating_sub(elapsed);
-
-    let color_code = if !colored {
-        ""
-    } else if percent < 60 {
-        "\x1b[32m"
-    } else if percent < 85 {
-        "\x1b[33m"
-    } else {
-        "\x1b[31m"
-    };
-
-    let reset = if colored { "\x1b[0m" } else { "" };
-    format!(
-        "{}[{}{}] ({}%){}",
-        color_code,
-        "■".repeat(elapsed),
-        "-".repeat(remaining),
-        percent,
-        reset
-    )
+fn modules_from(names: &[&str]) -> Vec<ModuleConfig> {
+    names.iter().copied().map(ModuleConfig::new).collect()
 }
 
 pub fn default_icon_for_module(name: &str) -> Option<&'static str> {
@@ -1062,26 +899,11 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             general: GeneralConfig::default(),
-            modules: vec![
-                ModuleConfig::new("os"),
-                ModuleConfig::new("host"),
-                ModuleConfig::new("board"),
-                ModuleConfig::new("kernel"),
-                ModuleConfig::new("uptime"),
-                ModuleConfig::new("packages"),
-                ModuleConfig::new("shell"),
-                ModuleConfig::new("desktop"),
-                ModuleConfig::new("font"),
-                ModuleConfig::new("terminal"),
-                ModuleConfig::new("cpu"),
-                ModuleConfig::new("gpu"),
-                ModuleConfig::new("memory"),
-                ModuleConfig::new("swap"),
-                ModuleConfig::new("disk"),
-                ModuleConfig::new("battery"),
-                ModuleConfig::new("local_ip"),
-                ModuleConfig::new("locale"),
-            ],
+            modules: modules_from(&[
+                "os", "host", "board", "kernel", "uptime", "packages", "shell", "desktop", "font",
+                "terminal", "cpu", "gpu", "memory", "swap", "disk", "battery", "local_ip",
+                "locale",
+            ]),
         }
     }
 }
@@ -1095,15 +917,8 @@ impl Config {
                 c.general.separator = " :".to_string();
                 c.general.colors.enabled = false;
                 c.general.logo.enabled = false;
-                c.modules = vec![
-                    ModuleConfig::new("os"),
-                    ModuleConfig::new("kernel"),
-                    ModuleConfig::new("uptime"),
-                    ModuleConfig::new("shell"),
-                    ModuleConfig::new("cpu"),
-                    ModuleConfig::new("memory"),
-                    ModuleConfig::new("disk"),
-                ];
+                c.modules =
+                    modules_from(&["os", "kernel", "uptime", "shell", "cpu", "memory", "disk"]);
                 Some(c)
             }
             "clean" => {
@@ -1112,17 +927,10 @@ impl Config {
                 c.general.separator = "".to_string();
                 c.general.padding = 1;
                 c.general.colors.enabled = false;
-                c.modules = vec![
-                    ModuleConfig::new("os"),
-                    ModuleConfig::new("kernel"),
-                    ModuleConfig::new("desktop"),
-                    ModuleConfig::new("shell"),
-                    ModuleConfig::new("terminal"),
-                    ModuleConfig::new("cpu"),
-                    ModuleConfig::new("gpu"),
-                    ModuleConfig::new("memory"),
-                    ModuleConfig::new("uptime"),
-                ];
+                c.modules = modules_from(&[
+                    "os", "kernel", "desktop", "shell", "terminal", "cpu", "gpu", "memory",
+                    "uptime",
+                ]);
                 Some(c)
             }
             "dots" => {
@@ -1132,17 +940,9 @@ impl Config {
                 c.general.padding = 1;
                 c.general.colors.enabled = true;
                 c.general.colors.symbol = "●".to_string();
-                c.modules = vec![
-                    ModuleConfig::new("os"),
-                    ModuleConfig::new("kernel"),
-                    ModuleConfig::new("uptime"),
-                    ModuleConfig::new("shell"),
-                    ModuleConfig::new("terminal"),
-                    ModuleConfig::new("cpu"),
-                    ModuleConfig::new("gpu"),
-                    ModuleConfig::new("memory"),
-                    ModuleConfig::new("disk"),
-                ];
+                c.modules = modules_from(&[
+                    "os", "kernel", "uptime", "shell", "terminal", "cpu", "gpu", "memory", "disk",
+                ]);
                 Some(c)
             }
             "card" | "modern-card" => {
@@ -1153,21 +953,10 @@ impl Config {
                 c.general.center = true;
                 c.general.colors.enabled = true;
                 c.general.colors.position = "bottom".to_string();
-                c.modules = vec![
-                    ModuleConfig::new("os"),
-                    ModuleConfig::new("host"),
-                    ModuleConfig::new("kernel"),
-                    ModuleConfig::new("uptime"),
-                    ModuleConfig::new("break"),
-                    ModuleConfig::new("shell"),
-                    ModuleConfig::new("terminal"),
-                    ModuleConfig::new("desktop"),
-                    ModuleConfig::new("break"),
-                    ModuleConfig::new("cpu"),
-                    ModuleConfig::new("gpu"),
-                    ModuleConfig::new("memory"),
-                    ModuleConfig::new("disk"),
-                ];
+                c.modules = modules_from(&[
+                    "os", "host", "kernel", "uptime", "break", "shell", "terminal", "desktop",
+                    "break", "cpu", "gpu", "memory", "disk",
+                ]);
                 Some(c)
             }
             "brackets" => {
@@ -1218,15 +1007,8 @@ impl Config {
                 let mut c = Config::default();
                 c.general.padding = 1;
                 c.general.colors.enabled = false;
-                c.modules = vec![
-                    ModuleConfig::new("os"),
-                    ModuleConfig::new("host"),
-                    ModuleConfig::new("kernel"),
-                    ModuleConfig::new("uptime"),
-                    ModuleConfig::new("shell"),
-                    ModuleConfig::new("cpu"),
-                    ModuleConfig::new("memory"),
-                ];
+                c.modules =
+                    modules_from(&["os", "host", "kernel", "uptime", "shell", "cpu", "memory"]);
                 Some(c)
             }
             "default" => Some(Config::default()),
@@ -1292,27 +1074,17 @@ impl Config {
     pub fn load() -> Self {
         let path = Self::config_path();
         if !path.exists() {
-            if let Some(ff_path) = Self::find_fastfetch_config() {
-                if let Ok(content) = std::fs::read_to_string(&ff_path) {
-                    if let Some(imported) = Self::import_from_fastfetch(&content) {
-                        if let Ok(toml_str) = toml::to_string_pretty(&imported) {
-                            if let Some(parent) = path.parent() {
-                                let _ = std::fs::create_dir_all(parent);
-                            }
-                            let _ = std::fs::write(&path, &toml_str);
-                        }
-                        return imported;
-                    }
-                }
-            }
-            let default_cfg = Self::default();
-            if let Ok(toml_str) = toml::to_string_pretty(&default_cfg) {
+            let cfg = Self::find_fastfetch_config()
+                .and_then(|ff_path| std::fs::read_to_string(ff_path).ok())
+                .and_then(|content| Self::import_from_fastfetch(&content))
+                .unwrap_or_default();
+            if let Ok(toml_str) = toml::to_string_pretty(&cfg) {
                 if let Some(parent) = path.parent() {
                     let _ = std::fs::create_dir_all(parent);
                 }
                 let _ = std::fs::write(&path, &toml_str);
             }
-            return default_cfg;
+            return cfg;
         }
         Self::load_from(&path).unwrap_or_else(|err| {
             eprintln!("{err}");
@@ -2249,18 +2021,6 @@ separator = 12345
             .find(|m| m.name == "local_ip")
             .unwrap();
         assert_eq!(local_ip_mod.icon.as_deref(), Some("󰩟"));
-    }
-
-    #[test]
-    fn test_make_progress_bar() {
-        let bar = make_progress_bar(50, 10, false);
-        assert_eq!(bar, "[■■■■■-----] (50%)");
-
-        let bar_full = make_progress_bar(100, 10, false);
-        assert_eq!(bar_full, "[■■■■■■■■■■] (100%)");
-
-        let bar_empty = make_progress_bar(0, 10, false);
-        assert_eq!(bar_empty, "[----------] (0%)");
     }
 
     #[test]

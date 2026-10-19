@@ -49,10 +49,6 @@ pub fn parse_host(vendor: &str, product: &str) -> Option<String> {
     }
 }
 
-pub fn combine_host(vendor: &str, product: &str) -> Option<String> {
-    parse_host(vendor, product)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -68,7 +64,7 @@ mod tests {
             Some("LENOVO ThinkPad T480".to_string())
         );
         assert_eq!(
-            combine_host("ASUSTeK COMPUTER INC.", "ROG Zephyrus G14"),
+            parse_host("ASUSTeK COMPUTER INC.", "ROG Zephyrus G14"),
             Some("ASUSTeK COMPUTER INC. ROG Zephyrus G14".to_string())
         );
     }

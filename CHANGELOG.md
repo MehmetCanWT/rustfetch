@@ -23,18 +23,22 @@ RustFetch follows [Semantic Versioning](https://semver.org/) paired with **Cat B
 ## [v0.1.2] — "Bengal" (2026-10-27)
 
 ### ✨ New Features
-- **GitHub Update Notification (`update` Module)**: Automatically checks the GitHub repository for newer releases (with a 6-hour disk cache TTL for zero startup latency) and displays `󰚰 Update : Update available (v0.1.2 -> vX.Y.Z "Codename")` at the bottom of the modules list when an update is available. Can be disabled via `check_updates = false` in `config.toml` or `--no-update-check` on the CLI.
+- **New Telemetry Modules (`os_age`, `power_profile`, `gpu_driver`, `net_io`)**: Added root filesystem birth age via `statx(STATX_BTIME)`, ACPI platform power profile & scaling governor, bound GPU kernel driver & version, and live network RX/TX throughput.
+- **Multi-Disk Mounts & Battery Health**: Added `path = "/home"` (or `disk:/mnt/nvme`) support for multiple disk entries and battery cycle count + design-vs-full health percentage reporting.
+- **Interactive TUI Setup (`--setup`), Doctor (`--doctor`), & Self-Updater (`--self-update`)**: Added interactive terminal configuration builder with `.bak` backups, system/terminal capability diagnostics, discovery flags (`--list-modules`, `--list-logos`, `--list-themes`, `--list-presets`), and atomic in-place binary updates.
+- **Sixel Graphics, Braille 3D Shading, & Live Sparklines (`--live`)**: Added DEC Sixel encoder, 2x4 Unicode Braille (`U+2800`) 3D rasterization, and real-time CPU/RAM sparkline graphs with hotkeys in `--live` mode.
+- **GitHub Update Notification (`update` Module)**: Automatically checks the GitHub repository for newer releases (with a 6-hour disk cache TTL for zero startup latency) and displays `󰚰 Update : Update available (v0.1.2 -> vX.Y.Z "Codename")` with an OSC 8 clickable link when an update is available.
 - **Cat Breed Version Codenames**: Every semantic version now carries an official cat breed codename displayed in `rustfetch --version`, update notifications, and GitHub Releases.
-- **Bazzite & Immutable Distro Support**: Added embedded Bazzite ASCII logos (`bazzite` and `bazzite_small`), Nerd Font icon mapping, Homebrew (`brew`) package counting in `packages`, 3D engine Bazzite/Nobara colors, and `rpm-ostree` / `brew` support in `install.sh`.
-- **Clean Distro-Native Release Artifacts**: Replaced generic `*-unknown-*` target triples with clean platform/distro package names (`arch`, `fedora`, `debian`, `nixos`, `linux-gnu`, `linux-musl`) and native extensions (`.pkg.tar.zst`, `.rpm`, `.deb`, `.tar.gz`).
-- **Multi-Stop Text Gradients**: Wired `general.gradient` in `config.toml` to smoothly interpolate TrueColor gradients across module labels and icons.
-- **3D Directional Lighting Control**: Wired `general.logo.three_d.light` (`top-left`, `top-right`, `front`, `top`, `bottom`) into `Renderer3D`.
+- **Bazzite & Immutable Distro Support**: Added embedded Bazzite ASCII logos (`bazzite` and `bazzite_small`), Nerd Font icon mapping, deduplicated Homebrew (`brew`) package counting in `packages`, 3D engine Bazzite/Nobara colors, and `rpm-ostree` / `brew` support in `install.sh`.
+- **Clean Distro-Native Release Artifacts**: Replaced generic `*-unknown-*` target triples with clean platform/distro package names (`arch`, `fedora`, `debian`, `nixos`, `linux-gnu`, `linux-musl`) and native extensions (`.pkg.tar.zst`, `.rpm`, `.deb`, `.tar.gz`), plus `flake.nix`.
+- **Multi-Stop Text Gradients & 3D Directional Lighting**: Wired `general.gradient` in `config.toml` and `general.logo.three_d.light` (`top-left`, `top-right`, `front`, `top`, `bottom`).
 
 ### 🐛 Bug Fixes
+- **Kitty Window Resize Sync & Portrait Image Fitting**: Added Kitty Synchronized Output (`?2026h`), image height capping, `.color` palette caching, and `PROMPT_COMMAND` / `stty size` resize hook synchronization so rapid window shrinking/enlarging never overlaps images and text.
+- **Instant 3D-to-2D ASCII Fallback**: Pressing any key or running any command in `--3d` mode now clears the 3D frame and immediately renders the matching static 2D ASCII logo of the active distro without consuming keystrokes.
 - **Immutable / Ostree Root Disk Reporting**: Fixed `Disk (/)` showing `0.0 GiB / 0.0 GiB (100%)` on Bazzite and Fedora Silverblue/Kinoite (`composefs` root) by falling back to `/sysroot` and `/var`.
 - **Header Hostname Detection**: Fixed missing hostname (`user@`) on systems with an empty `/etc/hostname` by reading `/proc/sys/kernel/hostname` first.
-- **Desktop & Window Manager Deduplication**: Fixed duplicate WM strings such as `Hyprland (Hyprland Wayland)`, added detection for `MangoWM`, `Niri`, `River`, `COSMIC`, `Wayfire`, `dwl`, and `labwc`, and restricted `/proc` scanning to numeric PID directories.
-- **GTK Font Formatting**: Normalized extra commas and spaces in `gtk-font-name` output.
+- **Desktop & Window Manager Deduplication**: Fixed duplicate WM strings such as `Hyprland (Hyprland Wayland)` and added detection for `MangoWM`, `Niri`, `River`, `COSMIC`, `Wayfire`, `dwl`, and `labwc`.
 
 ---
 

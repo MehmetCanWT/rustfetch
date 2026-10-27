@@ -1,364 +1,178 @@
-# RustFetch
+<div align="center">
 
-**RustFetch** is a blazing-fast (~4ms), memory-safe, and highly customizable system information fetch tool for Linux, written entirely in pure Rust.
+# 🦀 RustFetch (`rfetch`)
 
-Designed as a modern, zero-fork alternative to `neofetch` and `fastfetch`, RustFetch matches or beats the native performance of C-based fetchers by querying Linux `sysfs` and `procfs` directly, avoiding expensive subprocess invocations entirely.
+**Blazing-fast (~4ms), memory-safe, zero-fork Linux system fetch & hardware telemetry tool written in pure Rust.**
 
-```
-       /\         mehmetcan@fedora
-      /  \        -----------------
-     /\   \       OS: Fedora Linux 41 (Workstation Edition) x86_64
-    /      \      Host: Katana GF66 11UC (REV:1.0)
-   /   ,,   \     Kernel: 6.13.1-200.fc41.x86_64
-  /   |  |  -\    Uptime: 4 hours, 12 mins
- /_-''    ''-_\   Packages: 2418 (rpm), 12 (flatpak)
-                  Shell: bash 5.2.32
-                  Display: 1920x1080 @ 144Hz
-                  DE: GNOME 47.2
-                  WM: Mutter (Wayland)
-                  Terminal: alacritty
-                  CPU: 11th Gen Intel i5-11400H (12) @ 4.500GHz
-                  GPU: NVIDIA GeForce RTX 3050 Mobile
-                  Memory: 3.84 GiB / 15.38 GiB (24%) [■■■-------]
-                  Battery: 100% [Full]
-                  Wi-Fi: CanHome (70dBm - 60%)
-                  Processes: 342 (load: 0.42)
-                  Palette: ● ● ● ● ● ● ● ●
-```
+[![CI](https://github.com/MehmetCanWT/rustfetch/actions/workflows/ci.yml/badge.svg)](https://github.com/MehmetCanWT/rustfetch/actions/workflows/ci.yml)
+[![Release](https://github.com/MehmetCanWT/rustfetch/actions/workflows/release.yml/badge.svg)](https://github.com/MehmetCanWT/rustfetch/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Platform: Linux](https://img.shields.io/badge/Platform-Linux-orange.svg)](https://github.com/MehmetCanWT/rustfetch)
+
+<img src="images/image_3.png" alt="RustFetch Kitty Image Mode with Dynamic Palette" width="860" />
+
+</div>
 
 ---
 
-## 📸 Showcase & Screenshots
+## ✨ Why RustFetch?
 
-<p align="center">
-  <img src="images/image_3.png" alt="RustFetch Image Mode with Kitty Graphics Protocol and Dynamic Palette" width="850" />
-</p>
+**RustFetch** (`rustfetch` / `rfetch`) is built from the ground up in Rust to replace slow shell-script fetchers and fragile C configs with a single static-friendly binary that starts in **~4 milliseconds**:
+
+- ⚡ **Zero-Fork Kernel Telemetry (`~4ms`)**: Reads hardware topology directly from `/proc`, `/sys/bus/pci/devices`, `/sys/class/drm` (pure-Rust EDID binary parser), `/sys/class/hwmon`, `/sys/class/power_supply`, and `statx`/`statvfs` syscalls.
+- 🖼️ **True Terminal Graphics (`Kitty`, `Sixel`, `Halfblock`)**: Renders crisp PNG/JPG/WebP/GIF artwork with automatic dominant-color & 16-color palette extraction (`.color` sidecar cache), aspect-ratio fitting, and atomic **Kitty Synchronized Output (`?2026h`)** on window resize.
+- 🧊 **Real-Time 3D Spinning ASCII Relief (`--3d`)**: Extrudes any built-in distro logo or custom ASCII file into a 3D mesh with Blinn-Phong lighting and sub-cell `ascii`, `blocks`, `braille`, or `sextants` rasterization. Press **any key** or run any command and it **instantly falls back to the static 2D ASCII logo** of the same distro without eating your keystrokes.
+- 📈 **Interactive Live Monitor (`--live`) & TUI Config Builder (`--setup`)**: Real-time CPU/RAM Unicode sparkline graphs (`▁▂▃▄▅▆▇█`) with hot-swappable themes, plus an interactive terminal UI to toggle modules, themes, and presets with automatic `.bak` config backups.
+- 🛡️ **Non-Destructive Config & Shell Resize Sync (`--install-hook`)**: Never overwrites your existing `~/.config/rustfetch/config.toml`. Shell startup integration automatically redraws and re-centers `rustfetch` when you resize a fresh terminal window before running your first command.
+- 🐾 **Self-Updating with Cat Breed Codenames (`--self-update`)**: Built-in cached GitHub release checker (6h TTL) with clickable OSC 8 terminal links and atomic in-place binary updates (`v0.1.0 "Turkish Van"`, `v0.1.1 "Turkish Angora"`, `v0.1.2 "Bengal"`, `v0.1.3 "Maine Coon"`).
+
+---
+
+## 📸 Screenshots & Showcase
 
 <details open>
-<summary><b>🖼️ More Screenshots & Distro Themes (Click to expand/collapse)</b></summary>
+<summary><b>🖼️ Click to expand/collapse Distro & Image Mode Gallery</b></summary>
 <br>
 
-| Fedora Linux (ASCII + Border) | Arch Linux (ASCII + Border) |
+| Fedora Linux (ASCII + Rounded Box) | Arch Linux (ASCII + Rounded Box) |
 | :---: | :---: |
-| <img src="images/Fedora.png" width="440" /> | <img src="images/arch.png" width="440" /> |
+| <img src="images/Fedora.png" width="430" /> | <img src="images/arch.png" width="430" /> |
 
-| Gentoo Linux (ASCII + Border) | Kitty Image Mode + Adaptive Palette |
+| Gentoo Linux (ASCII + Rounded Box) | Kitty Image Mode + Adaptive Palette |
 | :---: | :---: |
-| <img src="images/gentoo.png" width="440" /> | <img src="images/image_1.png" width="440" /> |
+| <img src="images/gentoo.png" width="430" /> | <img src="images/image_1.png" width="430" /> |
 
 | Custom Image Mode (Minimal Card) |
 | :---: |
-| <img src="images/image_2.png" width="440" /> |
+| <img src="images/image_2.png" width="430" /> |
 
 </details>
 
 ---
 
-## 📚 Complete Documentation Hub (`docs/`)
+## 🚀 Installation
 
-Explore dedicated, in-depth guides for every single customization feature in RustFetch:
-
-| No | Guide | Description |
-|---|---|---|
-| **01** | [**Configuration & Quick Start**](docs/01-configuration.md) | `config.toml` hierarchy, Fastfetch auto-import, CLI flags, and layout sizing. |
-| **02** | [**Colors, Themes & Gradients**](docs/02-colors-themes-gradients.md) | HEX/RGB TrueColor, 13+ built-in themes (Catppuccin, Dracula, Tokyo Night), and linear gradients. |
-| **03** | [**Boxes, Borders & Image Frames**](docs/03-boxes-and-borders.md) | 8 container styles, custom 11-char `border_chars`, titles, dividers, and **Image Borders** (`border_image`). |
-| **04** | [**Custom ASCII Art**](docs/04-ascii-art.md) | Custom ASCII art, 2D/3D extrusion, and Neofetch `$1..$6` color variable substitution. |
-| **05** | [**Images & Graphics Protocols**](docs/05-images-and-protocols.md) | Kitty, Sixel, iTerm2, and half-block rendering, random wallpaper galleries, and auto-color extraction. |
-| **06** | [**3D Terminal Graphics Engine**](docs/06-3d-terminal-engine.md) | Real-time 3D ASCII mesh extrusion, relief heightmaps, Blinn-Phong lighting, and sub-cell rasterization. |
-| **07** | [**ASCII Animations & GIF Player**](docs/07-ascii-animations-gifs.md) | Frame-by-frame ASCII animation player, GIF/MP4 conversion guide, zero-flicker double buffering. |
-| **08** | [**Modules & Nerd Font v3 Icons**](docs/08-modules-and-icons.md) | All 28+ telemetry collectors, modern Nerd Font v3 icons, distro-aware OS glyphs, progress bars & custom shell commands. |
-| **09** | [**Layout Presets Showcase**](docs/09-presets-showcase.md) | Showcase of `card`, `dots`, `clean`, `neofetch`, `brackets`, `retro`, `minimal`, `modern`, and `compact`. |
-
----
-
-## Key Features
-
-* **Universal Distro Support:** Native ASCII logos and pure-filesystem package counters for Fedora, Arch, Ubuntu, Debian, Alpine, Void, NixOS, Gentoo, openSUSE, Mint, Manjaro, Pop!_OS, EndeavourOS, Kali, SteamOS, Artix, Red Hat / CentOS / Rocky / Alma.
-* **Modern Nerd Font v3 Glyphs:** Crisp, non-broken Material Design symbols for every module, plus distro-aware OS icons (Arch `󰣇`, Fedora `󰣛`, Ubuntu `󰕈`, Debian `󰣚`, NixOS `󱄅`, Gentoo `󰣨`).
-* **Ultra-Deep Ricing & Theming:** 13+ built-in color themes (Catppuccin Mocha/Latte/Macchiato/Frappé, Dracula, Tokyo Night, Gruvbox, Nord, Rosé Pine, Cyberpunk, Monokai, OneDark, Solarized), 24-bit TrueColor linear text gradients, and Neofetch `$1..$6` color replacements.
-* **Advanced Box & Border Engine:** 8 built-in border styles (`ascii`, `light`, `heavy`, `double`, `rounded`, `brackets`, `dots`, `block`), custom 11-char strings (`border_chars`), colored borders, embedded titles (`╭── System ────╮`), and section divider lines (`├── Hardware ──┤`).
-* **Image Borders & Decorative Frames (`border_image`):** Compose telemetry cards with any PNG/JPG/WebP illustration on the left, right, top, bottom, or both sides as a frame, rendered via TrueColor ANSI half-blocks.
-* **Universal Terminal Compatibility:** Seamlessly adapts across GUI emulators (Kitty, Alacritty, Ghostty, Foot, WezTerm), Linux Virtual Consoles (`TERM=linux` automatically downsamples 24-bit TrueColor to 16 ANSI colors), dumb terminals, and standard `NO_COLOR` environments.
-* **Microsecond Execution (~4ms):** Reads hardware topology directly from `/sys/bus/pci/devices`, `/sys/class/drm`, and `/proc`, bypassing `lspci`, `xrandr`, and shell sub-processes.
-* **Built-in Presets (`--preset`):** Instant layouts including `card`, `dots`, `clean`, `neofetch`, `brackets`, `retro`, `minimal`, `modern`, and `compact`.
-* **Microsecond Telemetry Profiler (`--benchmark`):** Profile exact microsecond execution latency across all active telemetry modules with visual progress bars.
-* **Fastfetch Auto-Migration:** Automatically inspects existing Fastfetch configurations (`~/.config/fastfetch/config.jsonc`) in a read-only manner on first run. Migrates module ordering, custom icons, and logo paths to `~/.config/rustfetch/config.toml` without modifying your Fastfetch setup.
-* **Modern Image Rendering:** Full support for the Kitty graphics protocol (`protocol = "kitty"`), Sixel, iTerm2, and universal TrueColor ANSI half-block rendering (`protocol = "halfblock"`).
-* **Native Dominant Color Extraction (`auto_color`):** Automatically extracts vibrant accent colors from images in pure Rust using HSV saturation scoring.
-* **Dual Commands (`rustfetch` & `rfetch`):** Both standard and short executable names are installed out of the box with shell completions (Bash, Zsh, Fish) and a UNIX man page (`man rustfetch`).
-
----
-
-## Performance & Benchmarks
-
-RustFetch is engineered under the philosophy that system information tools should never slow down terminal startup.
-
-### Comparative Benchmark
-
-*Measurements on Intel Core i5-11400H (Fedora Linux, warmed caches, 50-iteration average).*
-
-| Fetch Tool | Language | Execution Time | Architecture Notes |
-| :--- | :--- | :--- | :--- |
-| **RustFetch** | **Rust** | **~4.2 ms** | Direct `sysfs`/`procfs` parsing, pure Rust EDID decoding, zero subprocesses. |
-| **Fastfetch** | C | ~6.0 ms | Highly optimized C, dynamic library linking. |
-| **Neofetch** | Bash | ~250.0 ms | Spawns dozens of shell forks (`awk`, `sed`, `grep`, `lspci`). |
-
-### Profiling with `--benchmark`
-
-RustFetch includes a built-in profiler that measures every collector's microsecond footprint:
-
-```bash
-rustfetch --benchmark
-```
-
-```text
-============================================================
-              RustFetch Execution Benchmark
-============================================================
-  os               │    42 µs │ ▓▒░░░░░░░░░░░░░░░░░░░░░░░░░
-  host             │    18 µs │ █░░░░░░░░░░░░░░░░░░░░░░░░░
-  kernel           │     8 µs │ █░░░░░░░░░░░░░░░░░░░░░░░░░
-  uptime           │     9 µs │ █░░░░░░░░░░░░░░░░░░░░░░░░░
-  packages         │   480 µs │ ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓
-  display          │   120 µs │ ▓▓▓▓▓▓█░░░░░░░░░░░░░░░░░░░
-  cpu              │    65 µs │ ▓▓▓█░░░░░░░░░░░░░░░░░░░░░░
-  gpu              │    95 µs │ ▓▓▓▓▓░░░░░░░░░░░░░░░░░░░░░
-  memory           │    22 µs │ █░░░░░░░░░░░░░░░░░░░░░░░░░
-  wifi             │   310 µs │ ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░░░░░░░░
-  processes        │   180 µs │ ▓▓▓▓▓▓▓▓▓▓░░░░░░░░░░░░░░░░
-------------------------------------------------------------
-  Total Pipeline   │  1.34 ms
-============================================================
-```
-
----
-
-## Installation
-
-### 1. One-Line Install (Recommended)
-
-Universal installer for any Linux distribution. Compiles optimized release binary, sets up symlinks (`rustfetch` and `rfetch`), installs man pages and shell completions:
+### 1. Universal One-Liner (`install.sh`)
+Automatically detects your Linux distro (Arch, Fedora, Bazzite / `rpm-ostree`, Debian/Ubuntu, NixOS, openSUSE, Alpine, Void, Homebrew), installs `rustfetch` and `rfetch`, man pages, shell completions (`bash`, `zsh`, `fish`), and optional shell startup hooks:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/MehmetCanWT/rustfetch/main/install.sh | bash
 ```
 
-### 2. Arch Linux (AUR / PKGBUILD)
+### 2. Prebuilt Distro Packages (GitHub Releases)
+Download native packages directly from the [**Releases**](https://github.com/MehmetCanWT/rustfetch/releases/latest) page:
 
-```bash
-git clone https://github.com/MehmetCanWT/rustfetch.git
-cd rustfetch/packaging/arch
-makepkg -si
-```
+| Distro / Platform | Artifact Format | Install Command |
+| :--- | :--- | :--- |
+| **Arch / CachyOS / EndeavourOS** | `rustfetch-v*-arch-x86_64.pkg.tar.zst` | `sudo pacman -U rustfetch-v*-arch-x86_64.pkg.tar.zst` |
+| **Fedora / Bazzite / Nobara / RHEL** | `rustfetch-v*-fedora-x86_64.rpm` | `sudo dnf install ./rustfetch-v*-fedora-x86_64.rpm` *(or `rpm-ostree install`)* |
+| **Debian / Ubuntu / Pop!_OS / Mint** | `rustfetch-v*-debian-x86_64.deb` | `sudo apt install ./rustfetch-v*-debian-x86_64.deb` |
+| **NixOS / Nix Flakes** | `flake.nix` / `nixos-x86_64.tar.gz` | `nix run github:MehmetCanWT/rustfetch` |
+| **Generic Linux (`glibc` / `musl` / `aarch64`)** | `rustfetch-v*-linux-*.tar.gz` | Extract `rustfetch` & `rfetch` to `~/.local/bin/` |
 
-### 3. Fedora / RHEL / CentOS
-
-An RPM spec file is included at `packaging/rpm/rustfetch.spec`:
-
-```bash
-rpmbuild -ba packaging/rpm/rustfetch.spec
-```
-
-### 4. Build from Source (Cargo)
-
+### 3. Build from Source (`cargo`)
 ```bash
 git clone https://github.com/MehmetCanWT/rustfetch.git
 cd rustfetch
-cargo build --release -p rustfetch
-sudo cp target/release/rustfetch /usr/local/bin/
-sudo ln -sf /usr/local/bin/rustfetch /usr/local/bin/rfetch
+cargo build --workspace --release
+install -Dm755 target/release/rustfetch ~/.local/bin/rustfetch
+install -Dm755 target/release/rfetch ~/.local/bin/rfetch
 ```
 
 ---
 
-## Development & Verification
+## 🛠️ Quick Start & Everyday Commands
 
-Run the complete local quality gate (formatting, unit tests, Clippy with warnings
-as errors, release build, and isolated CLI smoke tests) with:
-
-```bash
-make test
-# or, without Make:
-./scripts/test.sh
-```
-
-The test runner uses temporary XDG configuration and cache directories, so it
-never creates or changes your regular RustFetch configuration.
-
-Useful focused checks are available through `make test-unit`, `make test-cli`,
-`make fmt`, `make lint`, and `make release`.
-
----
-
-## Preset Themes (`--preset`)
-
-RustFetch provides built-in visual presets that can be triggered on the command line or set in your configuration:
-
-| Preset | Command | Description |
-| :--- | :--- | :--- |
-| **`card`** | `rustfetch --preset card` | Rounded Unicode card (`╭───╮`, `│   │`, `╰───╯`) with section dividers and bottom palette dots. |
-| **`dots`** | `rustfetch --preset dots` | Minimalist dot layout (`󰣇 • Arch Linux x86_64`) with vibrant bottom color dots. |
-| **`clean`** | `rustfetch --preset clean` | Ultra-clean icon-only format with no borders or extra symbols. |
-| **`neofetch`** | `rustfetch --preset neofetch` | Nostalgic Neofetch style with `user@host`, dashed underline, and classic 16-color blocks. |
-| **`brackets`** | `rustfetch --preset brackets` | Balanced card bounded by bracket corner characters (`⎡ ... ⎤`). |
-| **`retro`** | `rustfetch --preset retro` | Retro terminal look with progress bars for RAM/disk and Pacman color symbols (`󰮯`). |
-| **`minimal`** | `rustfetch --preset minimal` | Logo-free, non-colored hardware summary ideal for server MOTDs. |
-| **`modern`** | `rustfetch --preset modern` | Dot-separated labels (`OS -> Fedora`) with progress meters. |
-| **`compact`** | `rustfetch --preset compact` | Two-character terse labels (`os`, `kr`, `up`, `pk`, `cp`, `gp`, `mm`). |
-| **`default`** | `rustfetch --preset default` | Standard aesthetic layout with auto-detected distro ASCII art and Nerd Font v3 icons. |
-
----
-
-## Animated 3D ASCII Logos (`--3d` / `3d = true`)
-
-RustFetch features an authentic, real-time 3D ASCII rendering engine inspired by [`areofyl/fetch`](https://github.com/areofyl/fetch). It converts any distro ASCII logo into a 3D relief model with depth extrusions, Blinn-Phong diffuse & specular lighting, perspective projection, and sub-cell rasterization:
-
-- **24-bit TrueColor RGB:** Uses exact RGB escape sequences (`\x1b[38;2;R;G;Bm`) that completely bypass terminal theme remappings (such as Kitty themes, Catppuccin, or TokyoNight). Distro branding is always 100% accurate:
-  - **Fedora:** Official Blue `#29a8e0` + Pure White `#ffffff`
-  - **Gentoo:** Official Pink/Purple `#fe7ae6` + Pure White `#ffffff`
-  - **Arch:** Arch Cyan `#1793d1` + Light Cyan `#33a2e6`
-  - **Ubuntu:** Ubuntu Orange `#e95420` + Pure White `#ffffff`
-  - **Debian:** Debian Red `#d70a53` + Pure White `#ffffff`
-- **Seamless Typing Handover (`exit_on_key = true`):** The 3D animation spins continuously on terminal startup. The instant you type any command or key, the 3D loop breaks immediately without consuming your keystroke(s)—leaving your typed characters directly in your shell prompt (Bash, Zsh, Fish) and freezing the rendered fetch output cleanly displayed above. You can also exit with **`Ctrl+C`** or **`q`**.
-- **Dynamic Adaptive Theming:** In random image mode or image mode, the title header (`user@host`) and module icons dynamically adapt to the extracted dominant color of the image. In distro logo mode, the authentic 24-bit TrueColor of the distribution is used.
-- **Interactive Installer Menu:** Running `./install.sh` displays an interactive prompt allowing you to set 3D Animated mode or Standard 2D mode as your default.
+Both `rustfetch` and the shorthand alias `rfetch` accept the same flags:
 
 ```bash
-# Run continuous 3D animated fetch (or set 3d = true in config)
+# Standard run (uses ~/.config/rustfetch/config.toml)
+rustfetch
+
+# Interactive TUI Configuration Builder (toggle modules, presets & themes live)
+rustfetch --setup
+
+# System & Terminal Capability Diagnostics (checks Kitty/Sixel, Nerd Fonts, sysfs/procfs, config)
+rustfetch --doctor
+
+# Update RustFetch in-place to the latest GitHub Release
+rustfetch --self-update
+
+# Live Hardware Monitor with real-time CPU & RAM sparklines ([t] Theme, [b] Border, [q] Quit)
+rustfetch --live
+
+# 3D Spinning ASCII Relief Mode (instantly drops to 2D static ASCII on any keypress)
 rustfetch --3d
+rustfetch --3d -l cachyos --shading-mode braille
 
-# Choose another distro logo or adjust speed and depth
-rustfetch --3d --logo arch --speed 1.5 --depth 1.2
+# Try presets, themes, and custom logos on the fly
+rustfetch --preset card --theme catppuccin
+rustfetch -l bazzite --border --border-style rounded
+rustfetch -i ~/Pictures/logo.png --protocol kitty
 
-# Custom canvas width and size
-rustfetch --3d --width 70 --size 1.3
+# Discover all built-in modules, distros, themes, and presets
+rustfetch --list-modules
+rustfetch --list-logos
+rustfetch --list-themes
+rustfetch --list-presets
 
-# Sub-cell blocks & sextants shading
-rustfetch --3d --shading-mode blocks
-rustfetch --3d --shading-mode sextants
+# Install or remove shell startup & window-resize hook (.bashrc / .zshrc / config.fish)
+rustfetch --install-hook
+rustfetch --remove-hook
 
-# Stop after N frames (e.g. for scripted benchmarks)
-rustfetch --3d --frames 100
+# Profile microsecond latency of every active collector
+rustfetch --benchmark
 ```
 
 ---
 
-## 🎬 Custom ASCII Art & Frame Animations (`--ascii` / `--ascii-anim`)
+## 📊 Telemetry Modules (31 Built-in Collectors)
 
-> 📖 **Full Guide & Formatting:** Check out **[docs/07-ascii-animations-gifs.md](docs/07-ascii-animations-gifs.md)** and **[docs/ascii-anim.md](docs/ascii-anim.md)** for a complete walkthrough on creating custom multi-frame animations, delimiter syntax, and directory setups.
+Run `rustfetch --list-modules` at any time to inspect all collectors. Full schema details are in [**MODULES.md**](MODULES.md).
 
-- **Custom Static ASCII (`--ascii <PATH>`):** Use your own custom ASCII text file in 2D or extrude it into an interactive 3D model with `--3d` (`rfetch --ascii my_logo.txt --3d`).
-- **Multi-Frame ASCII Animations (`--ascii-anim <PATH>`):** Play continuous frame-by-frame ASCII animations from a single file (separated by `===FRAME===` / `---`) or a directory of frames (`01.txt`, `02.txt`).
-- **Seamless Typing Handover (`exit_on_key = true`):** The animation runs smoothly on shell startup, but stops the instant you type any command without eating a single keystroke.
-
-```bash
-# Display your own custom ASCII drawing
-rustfetch --ascii ~/art/logo.txt
-
-# Turn your custom ASCII drawing into an interactive rotating 3D model
-rustfetch --ascii ~/art/logo.txt --3d
-
-# Play an animated ASCII sequence from a multi-frame file
-rustfetch --ascii-anim assets/animations/spinner.txt --fps 15
-
-# Play an animated ASCII sequence from a directory of frames
-rustfetch --ascii-anim assets/animations/pulse/ --fps 12
-```
-
----
-
-## Command Line Options
-
-```text
-Usage: rustfetch [OPTIONS] (or rfetch [OPTIONS])
-
-Options:
-      --preset <NAME>          Apply a built-in layout preset [card, dots, clean, neofetch, brackets, retro, minimal, modern, compact, default]
-      --theme <NAME>           Apply a color theme [catppuccin-mocha, dracula, tokyo-night, gruvbox, nord, rose-pine, etc.]
-      --border                 Wrap telemetry output in a decorative box container
-      --border-style <STYLE>   Border box style [ascii, light, heavy, double, rounded, brackets, dots, block]
-      --border-color <COLOR>   Color of border box (name or hex, e.g. magenta, #bd93f9)
-      --border-title <TITLE>   Optional title embedded in top border line (e.g. "System")
-      --border-image <PATH>    Path to image file used as a decorative border/frame
-      --border-image-width <N> Column width for border image [default: 24]
-      --border-image-position <POSITION>  Place the image at left, right, top, bottom, or frame
-      --icon-only              Show only icons and telemetry values (hide labels)
-      --separator <SEP>        Custom separator string between label/icon and value (e.g. " • ")
-      --3d                     Run in animated 3D ASCII art mode (continuous autonomous rotation)
-      --ascii <PATH>           Path to custom static ASCII art file (used in 2D or 3D)
-      --ascii-anim <PATH>      Path to multi-frame ASCII animation file or directory (alias: --anim)
-      --fps <FLOAT>            Animation playback speed in frames per second [default: 15.0]
-      --width <COLS>           3D canvas width in columns (alias: --image-width-cols) [default: 42]
-      --height <ROWS>          3D canvas height in rows [default: auto (24)]
-      --speed <FLOAT>          3D animation speed multiplier [default: 1.0]
-      --rotate-x               Lock/toggle 3D rotation to X axis
-      --rotate-y               Lock/toggle 3D rotation to Y axis
-      --size <FLOAT>           Scale 3D logo size [default: 1.0]
-      --depth <FLOAT>          Scale 3D extrusion depth [default: 1.0]
-      --shading-mode <MODE>    Shading mode: ascii (default), blocks, sextants
-      --shading <CHARS>        Custom shading ramp characters
-      --frames <N>             Run for N frames instead of continuous loop
-      --hold                   Do not exit animation on keypress (only exit on Ctrl+C or 'q')
-      --exit-on-key            Exit animation immediately on keypress, yielding to shell prompt
-      --benchmark              Run microsecond execution profiler
-  -c, --config <PATH>          Path to custom TOML config file
-  -i, --image <PATH>           Render image instead of ASCII logo (Kitty protocol / halfblock)
-  -l, --logo <NAME>            Override ASCII logo (e.g. arch, fedora, gentoo, ubuntu, void, alpine, etc.)
-      --color <COLOR>          Override primary accent color (name or hex like #ff79c6)
-      --center                 Center output horizontally in terminal window
-      --no-logo                Disable logo completely
-      --live                   Run in real-time monitor mode
-      --json                   Output telemetry in structured JSON
-      --dump-config            Print active configuration to stdout
-      --generate-config        Generate default config file in ~/.config/rustfetch/config.toml
-      --import-fastfetch       Import Fastfetch configuration into RustFetch TOML
-      --completions <SHELL>    Generate shell completions [bash, zsh, fish]
-  -h, --help                   Print help
-  -V, --version                Print version
-```
-
----
-
-## Supported Telemetry Modules
-
-> 📖 **Comprehensive Guide:** For full technical details on each module, data sources, progress bar settings, and custom format templates, see the **[Telemetry Modules Guide (MODULES.md)](MODULES.md)**.
-
-| Module | Description | Implementation Strategy |
+| Module | Label | Data Source & Highlights |
 | :--- | :--- | :--- |
-| `os` | Distro name, ID, and version | Parsed from `/etc/os-release` |
-| `kernel` | Linux kernel release & architecture | Pure `libc::uname` |
-| `uptime` | System uptime in hours and minutes | Direct `/proc/uptime` parsing |
-| `packages` | Package manager counts (pacman, dpkg, rpm, flatpak, apk, xbps, nix, emerge, snap) | Pure filesystem traversal with TTL cache |
-| `shell` | User login shell & version | Read from `$SHELL` and binary inspection |
-| `display` | Connected monitors, resolutions & refresh rates | Pure Rust sysfs DRM & EDID Detailed Timing decoding |
-| `de` | Desktop Environment | `$XDG_CURRENT_DESKTOP` and session detection |
-| `wm` | Window Manager | Wayland socket or X11 property inspection |
-| `terminal` | Terminal emulator | Parent PID inspection via `/proc/$PID/stat` |
-| `cpu` | Processor model, cores, frequency & temperature | `/proc/cpuinfo` & `/sys/class/hwmon` |
-| `cpu_usage` | Real-time CPU load percentage & progress meter | `/proc/stat` jiffies delta |
-| `gpu` | Dedicated & integrated graphics cards | PCI class scan in `/sys/bus/pci/devices` via `pci.ids` |
-| `memory` | RAM usage, total, and percentage progress bar | `/proc/meminfo` |
-| `swap` | Swap space usage & percentage | `/proc/meminfo` |
-| `disk` | Filesystem mount usage & capacity | `libc::statvfs` |
-| `battery` | Battery capacity, status, health % & cycle count | `/sys/class/power_supply/BAT*` |
-| `brightness` | Display backlight brightness percentage & bar | `/sys/class/backlight` sysfs |
-| `sound` | Audio sink volume & mute status | WirePlumber (`wpctl`) / PulseAudio |
-| `wifi` | Wireless SSID, signal quality (dBm & %), band (5GHz/6GHz) | `iw dev link` with `nmcli` fallback |
-| `bluetooth` | Connected Bluetooth devices & battery levels | `bluetoothctl` & `/sys/class/power_supply` |
-| `processes` | Total running processes & 1-minute load average | `/proc/loadavg` & PID count |
-| `media` | Currently playing MPRIS track (artist - title) | Optional module via `playerctl` (disabled by default) |
-| `colors` | ANSI color palette preview (dots or blocks) | Terminal color sequence blocks |
-| `custom` | Custom static or formatted text | User-defined TOML configuration |
-| `break` | Blank spacer line | Formatting spacer |
+| `os` | **OS** | `/etc/os-release` with distro-specific Nerd Font v3 glyph (`󰣇`, `󰣛`, ``, `󰕈`, `󱄅`, etc.) |
+| `os_age` | **OS Age** | Root `/` filesystem birth timestamp via Linux `statx(STATX_BTIME)` (`42 days, 5 hours`) |
+| `host` | **Host** | `/sys/class/dmi/id/product_name` & `product_version` |
+| `board` | **Board** | `/sys/class/dmi/id/board_vendor` & `board_name` |
+| `kernel` | **Kernel** | Direct `libc::uname` syscall (`sysname`, `release`, `machine`) |
+| `uptime` | **Uptime** | `/proc/uptime` formatted into days, hours, and minutes |
+| `packages` | **Packages** | Native filesystem counters for `pacman`, `rpm`, `dpkg`, `flatpak`, `brew`, `nix`, `apk`, `xbps`, `emerge`, `snap` |
+| `shell` | **Shell** | Active user shell from `$SHELL` / parent process |
+| `desktop` | **Desktop** | Desktop Environment & Wayland/X11 Window Manager (`KDE`, `GNOME`, `Hyprland`, `Sway`, `Niri`, `MangoWM`, `COSMIC`) |
+| `font` | **Font** | GTK3/GTK4/Qt/gsettings active UI font |
+| `display` | **Display** | Pure-Rust `/sys/class/drm` & EDID 1.4/2.0 timing parser (resolution + refresh rate Hz) |
+| `terminal` | **Terminal** | `/proc/$PID/stat` parent tree walk & environment inspection (`kitty`, `ghostty`, `foot`, `wezterm`, `alacritty`) |
+| `cpu` | **CPU** | `/proc/cpuinfo` model name, logical thread count, and boost clock |
+| `cpu_usage` | **CPU Usage** | `/proc/stat` jiffies utilization percentage + optional progress bar |
+| `temp` | **Temp** | `/sys/class/hwmon` & `/sys/class/thermal` package/core sensor temperature (`°C`) |
+| `gpu` | **GPU** | `/sys/bus/pci/devices` 3D/VGA controller scanner |
+| `gpu_driver` | **GPU Driver** | Bound kernel module from `/sys/bus/pci/devices/*/driver` (`nvidia 565.77`, `amdgpu`, `xe`, `i915`) |
+| `memory` | **Memory** | `/proc/meminfo` used / total GiB + optional percentage bar |
+| `swap` | **Swap** | `/proc/meminfo` used / total swap GiB |
+| `disk` | **Disk** | `libc::statvfs` with Ostree/Bazzite `/sysroot` awareness and multi-mount support (`path = "/home"`) |
+| `battery` | **Battery** | `/sys/class/power_supply/BAT*` charge %, AC status, cycle count, and design-vs-full health % |
+| `power_profile` | **Power** | `/sys/firmware/acpi/platform_profile`, CPU scaling governor & `energy_performance_preference` |
+| `brightness` | **Brightness** | `/sys/class/backlight` percentage |
+| `sound` | **Sound** | PipeWire / WirePlumber (`wpctl`) / PulseAudio sink volume & mute state |
+| `wifi` | **Wi-Fi** | Connected SSID, signal strength, and frequency band (`iw` / `nmcli`) |
+| `net_io` | **Network** | Live RX/TX throughput (`↓ 12.4 MiB/s ↑ 1.1 MiB/s`) & total traffic from `/proc/net/dev` |
+| `bluetooth` | **Bluetooth** | Connected Bluetooth peripherals & battery percentages |
+| `local_ip` | **Local IP** | Primary LAN IPv4 address |
+| `locale` | **Locale** | System `$LANG` / `$LC_ALL` encoding |
+| `processes` | **Processes** | Running task count and 1-minute load average from `/proc/loadavg` |
+| `init` | **Init** | PID 1 init system (`systemd`, `openrc`, `runit`, `dinit`, `s6`) |
+| `container` | **Container** | Detects Docker, Podman, Distrobox, Toolbox, LXC, systemd-nspawn, Flatpak |
+| `media` | **Media** | Active MPRIS track (`playerctl`, optional) |
+| `update` | **Update** | Cached (6h TTL) GitHub release notifier with cat-breed codename & OSC 8 hyperlink |
+| `custom` / `break` | *Custom* | Arbitrary user labels/values and section dividers (`---DIVIDER:Hardware---`) |
 
 ---
 
-## Configuration
+## ⚙️ Configuration (`~/.config/rustfetch/config.toml`)
 
-The configuration file is located at `~/.config/rustfetch/config.toml`.
-
-### Example `config.toml`
+RustFetch creates `~/.config/rustfetch/config.toml` only when none exists and **never overwrites your custom edits**. You can also migrate an existing Fastfetch setup with `rustfetch --import-fastfetch`.
 
 ```toml
 [general]
@@ -366,76 +180,121 @@ separator = ":"
 padding = 1
 center = true
 icons = true
-border = true
-3d = true                    # Enable animated 3D ASCII mode by default
+icon_only = false
+check_updates = true
+# theme = "catppuccin"
+# gradient = ["#89b4fa", "#b4befe", "#cba6f7"]
+
+[general.border]
+enabled = false
+style = "rounded"            # "rounded", "single", "double", "thick", "dashed", "block", "ascii", "brackets"
+color = "cyan"
+padding = 1
 
 [general.colors]
 enabled = true
 symbol = "●"
 block = false
+image_palette = true         # Extract 16-color palette from active image logo
+position = "bottom"
+rows = 1
 
 [general.logo]
 enabled = true
-distro = "auto"
-image_width_cols = 60        # Width of 3D logo or image
-protocol = "auto"
+distro = "auto"              # "auto", "bazzite", "cachyos", "arch", "fedora", "nixos", "ubuntu", "gentoo", ...
+image_dir = "~/.config/rustfetch/logos"
+image_width_cols = 42
+random_image = true
+auto_color = true            # Extract dominant accent color from image
+protocol = "auto"            # "auto", "kitty", "sixel", "halfblocks"
 
 [general.logo.three_d]
-enabled = true
+enabled = false
 speed = 1.0
-size = 1.25
-shading_mode = "ascii"       # "ascii", "blocks", or "sextants"
-# outer_color = "#29a8e0"    # Optional custom TrueColor overrides
-# inner_color = "#ffffff"
+rotate_x = true
+rotate_y = true
+size = 1.0
+depth = 1.0
+width = 42
+height = 24
+shading_mode = "ascii"       # "ascii", "blocks", "braille", "sextants", "dot", "wireframe", "solid"
+light = "top-left"
 
 [[modules]]
 name = "os"
-label = "OS"
-
+[[modules]]
+name = "os_age"
+[[modules]]
+name = "host"
 [[modules]]
 name = "kernel"
-label = "Kernel"
-
 [[modules]]
 name = "uptime"
-label = "Uptime"
-
 [[modules]]
 name = "packages"
-label = "Packages"
-
 [[modules]]
-name = "display"
-label = "Display"
-
+name = "desktop"
+[[modules]]
+name = "terminal"
 [[modules]]
 name = "cpu"
-label = "CPU"
-
 [[modules]]
 name = "gpu"
-label = "GPU"
-
+[[modules]]
+name = "gpu_driver"
 [[modules]]
 name = "memory"
-label = "Memory"
 bar = true
-bar_width = 10
-
 [[modules]]
-name = "wifi"
-label = "Wi-Fi"
-
+name = "disk"
+path = "/"
 [[modules]]
-name = "processes"
-label = "Processes"
-
+name = "disk"
+path = "/home"
 [[modules]]
-name = "colors"
+name = "battery"
+[[modules]]
+name = "power_profile"
+[[modules]]
+name = "net_io"
+[[modules]]
+name = "local_ip"
+[[modules]]
+name = "update"
 ```
 
 ---
 
-## License
+## 📚 Detailed Guides (`docs/`)
 
-This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
+| Guide | Topic |
+| :--- | :--- |
+| [**01 — Configuration & Quick Start**](docs/01-configuration.md) | `config.toml` structure, CLI overrides, Fastfetch import, and shell hooks |
+| [**02 — Colors, Themes & Gradients**](docs/02-colors-themes-gradients.md) | 24-bit TrueColor, built-in themes, multi-stop gradients, and image color extraction |
+| [**03 — Boxes, Borders & Image Frames**](docs/03-boxes-and-borders.md) | Box styles, custom border glyphs, titles, section dividers, and `border_image` overlays |
+| [**04 — Custom ASCII Art**](docs/04-ascii-art.md) | Custom ASCII files, Neofetch `$1..$6` color tags, and small logo variants |
+| [**05 — Images & Graphics Protocols**](docs/05-images-and-protocols.md) | Kitty, DEC Sixel, and Unicode Halfblock rendering, aspect-ratio fitting, and random galleries |
+| [**06 — 3D Terminal Graphics Engine**](docs/06-3d-terminal-engine.md) | 3D Z-buffer rasterizer, Blinn-Phong lighting, shading modes, and instant 2D ASCII fallback |
+| [**07 — ASCII Animations & GIF Player**](docs/07-ascii-animations-gifs.md) | Multi-frame ASCII animations (`--ascii-anim`) and animated Kitty GIFs |
+| [**08 — Modules & Nerd Font v3 Icons**](docs/08-modules-and-icons.md) | All telemetry collectors, progress bars, custom formatting, and multi-disk mounts |
+| [**09 — Layout Presets Showcase**](docs/09-presets-showcase.md) | Visual tour of `default`, `card`, `dots`, `clean`, `neofetch`, `brackets`, `retro`, `minimal`, `modern`, `compact` |
+
+---
+
+## 🧪 Development & Testing
+
+```bash
+# Run formatting check, Clippy lints, and all 180+ unit tests
+cargo fmt --all -- --check
+cargo clippy --all-targets --all-features -- -D warnings
+cargo test --workspace
+
+# Run end-to-end CLI smoke test suite (isolated temporary XDG dirs)
+make test-cli
+```
+
+---
+
+## 📄 License
+
+Licensed under the [MIT License](LICENSE).

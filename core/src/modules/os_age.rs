@@ -127,7 +127,10 @@ mod tests {
         let base = 1_700_000_000;
         assert_eq!(format_os_age(0, base), None);
         assert_eq!(format_os_age(base + 100, base), None);
-        assert_eq!(format_os_age(base, base + 600), Some("< 1 hour".to_string()));
+        assert_eq!(
+            format_os_age(base, base + 600),
+            Some("< 1 hour".to_string())
+        );
         assert_eq!(
             format_os_age(base, base + 5 * 3600),
             Some("5 hours".to_string())

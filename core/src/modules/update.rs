@@ -59,8 +59,8 @@ pub fn codename_for_version(version: &str) -> &'static str {
         (0, 4, 0) => "Sphynx",
         (1, 0, 0) => "Anatolian",
         _ => {
-            let idx = (major as usize * 31 + minor as usize * 10 + patch as usize)
-                % CAT_BREEDS.len();
+            let idx =
+                (major as usize * 31 + minor as usize * 10 + patch as usize) % CAT_BREEDS.len();
             CAT_BREEDS[idx]
         }
     }
@@ -111,8 +111,7 @@ impl Module for Update {
         let cached_entry = if let Some(cached) = cache.read(UPDATE_CACHE_TTL) {
             cached.trim().to_string()
         } else {
-            let fetched =
-                fetch_latest_github_version().unwrap_or_else(|| current.to_string());
+            let fetched = fetch_latest_github_version().unwrap_or_else(|| current.to_string());
             cache.write(&fetched);
             fetched
         };
@@ -206,8 +205,7 @@ pub fn parse_cargo_toml_version(content: &str) -> Option<String> {
     for line in content.lines() {
         let trimmed = line.trim();
         if trimmed.starts_with('[') && trimmed.ends_with(']') {
-            in_pkg_section =
-                trimmed == "[workspace.package]" || trimmed == "[package]";
+            in_pkg_section = trimmed == "[workspace.package]" || trimmed == "[package]";
             continue;
         }
         if in_pkg_section {
@@ -346,10 +344,7 @@ members = ["core", "render", "cli"]
 version = "0.2.1"
 edition = "2021"
 "#;
-        assert_eq!(
-            parse_cargo_toml_version(sample),
-            Some("0.2.1".to_string())
-        );
+        assert_eq!(parse_cargo_toml_version(sample), Some("0.2.1".to_string()));
     }
 
     #[test]

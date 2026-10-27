@@ -62,7 +62,11 @@ pub fn render_positioned(
             print!("\x1b_Ga=d,d=a\x1b\\\x1b[2J\x1b[3J\x1b[H");
         }
         if !is_top_or_bottom && reserve_rows > 1 {
-            print!("{}\x1b[{}A\r", "\n".repeat(reserve_rows - 1), reserve_rows - 1);
+            print!(
+                "{}\x1b[{}A\r",
+                "\n".repeat(reserve_rows - 1),
+                reserve_rows - 1
+            );
         }
         if h_pad > 0 {
             print!("{}", " ".repeat(h_pad));

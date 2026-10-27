@@ -386,9 +386,7 @@ pub(crate) fn strip_rustfetch_hook(content: &str) -> String {
             if trimmed.starts_with("if ") || trimmed.starts_with("function ") {
                 block_depth += 1;
             }
-            if trimmed == "fi"
-                || trimmed == "end"
-                || (block_depth > 0 && trimmed.ends_with("; fi"))
+            if trimmed == "fi" || trimmed == "end" || (block_depth > 0 && trimmed.ends_with("; fi"))
             {
                 if block_depth > 0 {
                     block_depth -= 1;
@@ -750,7 +748,7 @@ pub fn run() {
     if !config.general.check_updates {
         let mut filtered_mods = Vec::with_capacity(modules.len());
         let mut filtered_cfgs = Vec::with_capacity(configs.len());
-        for (m, c) in modules.into_iter().zip(configs.into_iter()) {
+        for (m, c) in modules.into_iter().zip(configs) {
             if c.name != "update" {
                 filtered_mods.push(m);
                 filtered_cfgs.push(c);
@@ -1167,19 +1165,25 @@ fn run_once_inner(
 
             let card_rows = info_lines.len()
                 + if header.is_some() { 2 } else { 0 }
-                + if render_opts.palette_lines.is_some() { 2 } else { 0 }
+                + if render_opts.palette_lines.is_some() {
+                    2
+                } else {
+                    0
+                }
                 + if config.general.border { 2 } else { 0 };
             let default_max_rows = if effective_logo_pos == "top" || effective_logo_pos == "bottom"
             {
                 (term_rows / 2).clamp(8, 18)
             } else {
-                card_rows.clamp(16, 23).min(term_rows.saturating_sub(3).max(6))
+                card_rows
+                    .clamp(16, 23)
+                    .min(term_rows.saturating_sub(3).max(6))
             };
-            let max_image_rows = Some(
-                cli.height
-                    .unwrap_or(default_max_rows)
-                    .min(term_rows.saturating_sub(2).max(1)),
-            );
+            let max_rows_val = cli
+                .height
+                .unwrap_or(default_max_rows)
+                .min(term_rows.saturating_sub(2).max(1));
+            let max_image_rows = Some(max_rows_val);
 
             if cli.live {
                 if let Ok((cols, _)) = crossterm::terminal::size() {
@@ -1213,12 +1217,9 @@ fn run_once_inner(
                 return;
             }
 
-            let (est_cols, est_rows) = rustfetch_render::image_display_dimensions(
-                image_path,
-                target_cols,
-                max_image_rows,
-            )
-            .unwrap_or((target_cols, max_image_rows.unwrap_or(20)));
+            let (est_cols, est_rows) =
+                rustfetch_render::image_display_dimensions(image_path, target_cols, max_image_rows)
+                    .unwrap_or((target_cols, max_rows_val));
 
             let bounded_card_w = if effective_logo_pos == "top" || effective_logo_pos == "bottom" {
                 needed_right_w.min(term_cols.saturating_sub(pad_val * 2 + 1))
@@ -1284,11 +1285,13 @@ fn run_once_inner(
                 );
 
                 begin_keep_logo_frame(cli.keep_logo);
-                if effective_logo_pos != "top"
-                    && effective_logo_pos != "bottom"
-                    && reserve_rows > 1
+                if effective_logo_pos != "top" && effective_logo_pos != "bottom" && reserve_rows > 1
                 {
-                    print!("{}\x1b[{}A\r", "\n".repeat(reserve_rows - 1), reserve_rows - 1);
+                    print!(
+                        "{}\x1b[{}A\r",
+                        "\n".repeat(reserve_rows - 1),
+                        reserve_rows - 1
+                    );
                 }
 
                 if h_pad > 0 {
@@ -1501,7 +1504,11 @@ fn format_bar(percent: u8, width: usize, colored: bool, invert_color: bool) -> S
         "\x1b[38;2;102;217;160m"
     };
 
-    let dim_track = if colored { "\x1b[38;2;108;112;134m" } else { "" };
+    let dim_track = if colored {
+        "\x1b[38;2;108;112;134m"
+    } else {
+        ""
+    };
     let reset = if colored { "\x1b[0m" } else { "" };
     format!(
         "{}[{}{}{}{}]",
@@ -1783,7 +1790,11 @@ fn compose_animated_frame(
             " ".repeat(config.general.padding)
         };
         for line in left_lines {
-            push_bounded(&mut frame_buf, format!("{left_pad}{line}"), &mut rows_written);
+            push_bounded(
+                &mut frame_buf,
+                format!("{left_pad}{line}"),
+                &mut rows_written,
+            );
         }
         push_bounded(&mut frame_buf, String::new(), &mut rows_written);
         let info_pad = if config.general.center {
@@ -1792,7 +1803,11 @@ fn compose_animated_frame(
             " ".repeat(config.general.padding)
         };
         for line in right_lines {
-            push_bounded(&mut frame_buf, format!("{info_pad}{line}"), &mut rows_written);
+            push_bounded(
+                &mut frame_buf,
+                format!("{info_pad}{line}"),
+                &mut rows_written,
+            );
         }
     } else {
         let total_content_w = left_width + layout::LOGO_GAP + right_width;
@@ -2722,6 +2737,7 @@ fn pick_random_image(dir_path: &str, keep_last: bool) -> Option<String> {
     Some(chosen)
 }
 
+#[allow(clippy::type_complexity)]
 fn get_image_color_and_palette(
     image_path: &str,
     auto_color: bool,

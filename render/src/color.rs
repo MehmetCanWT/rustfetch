@@ -182,10 +182,12 @@ pub fn extract_color_palette(path: &str, count: usize) -> Option<Vec<(u8, u8, u8
     palette_from_counts(&color_counts, count)
 }
 
+pub type RgbPalette = Vec<(u8, u8, u8)>;
+
 pub fn extract_dominant_and_palette(
     path: &str,
     count: usize,
-) -> Option<(String, Option<Vec<(u8, u8, u8)>>)> {
+) -> Option<(String, Option<RgbPalette>)> {
     let color_counts = load_and_sample_image(path)?;
     Some((
         dominant_from_counts(&color_counts),

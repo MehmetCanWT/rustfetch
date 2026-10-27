@@ -105,9 +105,13 @@ impl Module for PackagesModule {
             packages.push(format!("{snap_count} (snap)"));
         }
 
-        let mut brew_paths = vec![std::path::PathBuf::from("/home/linuxbrew/.linuxbrew/Cellar")];
+        let mut brew_paths = vec![std::path::PathBuf::from(
+            "/home/linuxbrew/.linuxbrew/Cellar",
+        )];
         if let Ok(home) = std::env::var("HOME") {
-            brew_paths.push(std::path::PathBuf::from(format!("{home}/.linuxbrew/Cellar")));
+            brew_paths.push(std::path::PathBuf::from(format!(
+                "{home}/.linuxbrew/Cellar"
+            )));
         }
         let brew_count = count_brew_cellars(&brew_paths);
         if brew_count > 0 {

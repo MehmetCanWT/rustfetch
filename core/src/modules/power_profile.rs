@@ -17,11 +17,7 @@ impl Module for PowerProfile {
         )
         .ok();
 
-        let value = format_power_profile(
-            platform.as_deref(),
-            governor.as_deref(),
-            epp.as_deref(),
-        )?;
+        let value = format_power_profile(platform.as_deref(), governor.as_deref(), epp.as_deref())?;
         Some(Info::new("Power Profile", value))
     }
 }

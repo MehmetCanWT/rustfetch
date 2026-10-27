@@ -22,48 +22,99 @@ pub const MODULE_DESCRIPTIONS: &[(&str, &str)] = &[
     ("uptime", "System uptime formatted in days/hours/minutes"),
     ("packages", "Installed package counts across all managers"),
     ("shell", "Current user shell and version"),
-    ("desktop", "Desktop environment, window manager, and display server"),
+    (
+        "desktop",
+        "Desktop environment, window manager, and display server",
+    ),
     ("font", "System UI font family and size"),
     ("terminal", "Active terminal emulator"),
     ("cpu", "CPU model, core/thread count, and max frequency"),
-    ("cpu_usage", "Real-time aggregate CPU utilization percentage"),
+    (
+        "cpu_usage",
+        "Real-time aggregate CPU utilization percentage",
+    ),
     ("temp", "CPU / hardware thermal sensor temperature"),
     ("gpu", "Dedicated and integrated GPUs (PCI sysfs)"),
     ("gpu_driver", "Active kernel GPU driver and module version"),
     ("memory", "RAM usage, total capacity, and percentage"),
     ("swap", "Swap memory usage and total capacity"),
-    ("disk", "Filesystem usage (supports custom mount `path = \"/home\"`)"),
+    (
+        "disk",
+        "Filesystem usage (supports custom mount `path = \"/home\"`)",
+    ),
     ("battery", "Battery charge percentage and status"),
-    ("power_profile", "ACPI platform power profile and CPU scaling governor"),
+    (
+        "power_profile",
+        "ACPI platform power profile and CPU scaling governor",
+    ),
     ("brightness", "Display backlight brightness percentage"),
-    ("display", "Connected monitor model, resolution, and refresh rate"),
+    (
+        "display",
+        "Connected monitor model, resolution, and refresh rate",
+    ),
     ("sound", "Audio sink volume and mute state"),
     ("media", "Currently playing MPRIS media track"),
-    ("bluetooth", "Connected Bluetooth devices and battery levels"),
+    (
+        "bluetooth",
+        "Connected Bluetooth devices and battery levels",
+    ),
     ("wifi", "Connected Wi-Fi SSID, signal quality, and band"),
-    ("net_io", "Active network interface cumulative RX / TX traffic"),
+    (
+        "net_io",
+        "Active network interface cumulative RX / TX traffic",
+    ),
     ("local_ip", "Primary LAN IPv4 address and interface"),
     ("locale", "System language and character encoding"),
     ("processes", "Load average and running/total process counts"),
-    ("init", "PID 1 init system (systemd, openrc, runit, dinit, s6)"),
+    (
+        "init",
+        "PID 1 init system (systemd, openrc, runit, dinit, s6)",
+    ),
     ("container", "Container or VM runtime environment"),
-    ("update", "GitHub release update notifier with cat breed codename"),
+    (
+        "update",
+        "GitHub release update notifier with cat breed codename",
+    ),
     ("custom", "Custom user-defined static label and value row"),
     ("break", "Blank vertical spacer line"),
     ("divider", "Horizontal section divider rule"),
 ];
 
 pub const PRESET_DESCRIPTIONS: &[(&str, &str)] = &[
-    ("default", "Balanced full system overview with Nerd Font icons and color palette"),
-    ("minimal", "Ultra-clean text-only layout without logo, icons, or palette"),
+    (
+        "default",
+        "Balanced full system overview with Nerd Font icons and color palette",
+    ),
+    (
+        "minimal",
+        "Ultra-clean text-only layout without logo, icons, or palette",
+    ),
     ("clean", "Icon-only key column with zero separator noise"),
-    ("dots", "Bullet-separated icon-only telemetry with dot color row"),
-    ("card", "Centered rounded border card with sectioned dividers"),
+    (
+        "dots",
+        "Bullet-separated icon-only telemetry with dot color row",
+    ),
+    (
+        "card",
+        "Centered rounded border card with sectioned dividers",
+    ),
     ("brackets", "Centered bracket-framed box layout"),
-    ("neofetch", "Classic Neofetch-inspired layout with 2-row solid color blocks"),
-    ("retro", "Rounded frame with Pac-Man color symbols and progress bars"),
-    ("modern", "Centered layout with arrow separators and inline progress bars"),
-    ("compact", "Essential 7-module summary for small terminal windows"),
+    (
+        "neofetch",
+        "Classic Neofetch-inspired layout with 2-row solid color blocks",
+    ),
+    (
+        "retro",
+        "Rounded frame with Pac-Man color symbols and progress bars",
+    ),
+    (
+        "modern",
+        "Centered layout with arrow separators and inline progress bars",
+    ),
+    (
+        "compact",
+        "Essential 7-module summary for small terminal windows",
+    ),
 ];
 
 pub const THEME_NAMES: &[&str] = &[
@@ -98,7 +149,10 @@ pub fn run_list_modules() {
 }
 
 pub fn run_list_themes() {
-    println!("{BOLD}Available Built-in Color Themes ({}):{RESET}\n", THEME_NAMES.len());
+    println!(
+        "{BOLD}Available Built-in Color Themes ({}):{RESET}\n",
+        THEME_NAMES.len()
+    );
     for &name in THEME_NAMES {
         if let Some(t) = rustfetch_render::get_theme(name) {
             let (pr, pg, pb) = t.primary;
@@ -229,14 +283,14 @@ pub fn run_self_update() {
     );
 
     let Some((latest, latest_code)) = check_latest_release() else {
-        eprintln!("Could not reach GitHub to check for updates. Please check your internet connection.");
+        eprintln!(
+            "Could not reach GitHub to check for updates. Please check your internet connection."
+        );
         std::process::exit(1);
     };
 
     if !is_newer_version(current, &latest) {
-        println!(
-            "\x1b[32m✓\x1b[0m RustFetch is already up to date (v{current} \"{cur_code}\")."
-        );
+        println!("\x1b[32m✓\x1b[0m RustFetch is already up to date (v{current} \"{cur_code}\").");
         return;
     }
 
@@ -437,7 +491,8 @@ pub fn run_setup_tui() {
 
     let mut selected_row = 0usize;
     let total_rows = 8usize;
-    let mut status_msg = String::from("Use ↑/↓ to select, ←/→ or Enter to toggle, [S] to Save, [Q] to Quit");
+    let mut status_msg =
+        String::from("Use ↑/↓ to select, ←/→ or Enter to toggle, [S] to Save, [Q] to Quit");
 
     loop {
         let _ = queue!(stdout, Clear(ClearType::All), MoveTo(0, 0));
@@ -459,16 +514,31 @@ pub fn run_setup_tui() {
             ),
             (
                 "4. Outer Border Box",
-                if cfg.general.border { "Enabled" } else { "Disabled" }.to_string(),
+                if cfg.general.border {
+                    "Enabled"
+                } else {
+                    "Disabled"
+                }
+                .to_string(),
             ),
             ("5. Border Style", border_style_val.to_string()),
             (
                 "6. Nerd Font Icons",
-                if cfg.general.icons { "Enabled" } else { "Disabled" }.to_string(),
+                if cfg.general.icons {
+                    "Enabled"
+                } else {
+                    "Disabled"
+                }
+                .to_string(),
             ),
             (
                 "7. Center Output",
-                if cfg.general.center { "Enabled" } else { "Disabled" }.to_string(),
+                if cfg.general.center {
+                    "Enabled"
+                } else {
+                    "Disabled"
+                }
+                .to_string(),
             ),
             (
                 "8. GitHub Update Check",
@@ -500,7 +570,10 @@ pub fn run_setup_tui() {
             &cfg.general.logo.distro
         });
         let preview_lines = preview_logo.colored_lines();
-        print!("\r\n  {BOLD}Live Logo Preview ({}):{RESET}\r\n", cfg.general.logo.distro);
+        print!(
+            "\r\n  {BOLD}Live Logo Preview ({}):{RESET}\r\n",
+            cfg.general.logo.distro
+        );
         for line in preview_lines.iter().take(8) {
             print!("    {line}\r\n");
         }
@@ -650,7 +723,8 @@ mod tests {
 
     #[test]
     fn test_install_binary_atomic_replaces_existing_file() {
-        let dir = std::env::temp_dir().join(format!("rustfetch_atomic_test_{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("rustfetch_atomic_test_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let src = dir.join("src_bin");

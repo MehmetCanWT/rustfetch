@@ -95,7 +95,10 @@ pub fn list_available_logos() -> &'static [(&'static str, &'static str)] {
         ("windows", "Windows"),
         ("cat", "RustFetch Cat Mascot (also: cat_small)"),
         ("bengal", "Bengal Cat (v0.1.2 Codename Mascot)"),
-        ("turkish_van", "Turkish Van Cat — Heterochromia Eyes (v0.1.0 Mascot)"),
+        (
+            "turkish_van",
+            "Turkish Van Cat — Heterochromia Eyes (v0.1.0 Mascot)",
+        ),
         ("turkish_angora", "Turkish Angora Cat (v0.1.1 Mascot)"),
     ]
 }
@@ -1518,11 +1521,7 @@ fn turkish_angora() -> Logo {
 }
 
 fn cat_small() -> Logo {
-    let lines = vec![
-        r##" $1/\_/\"##,
-        r##"$1( $2o$1.$2o$1 )"##,
-        r##" $1> ^ <"##,
-    ];
+    let lines = vec![r##" $1/\_/\"##, r##"$1( $2o$1.$2o$1 )"##, r##" $1> ^ <"##];
     let width = compute_logo_width(&lines);
     Logo {
         lines,

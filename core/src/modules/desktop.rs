@@ -35,11 +35,13 @@ pub fn format_desktop(de: &str, wm_name: &str, wm_type: &str) -> Option<String> 
         return None;
     }
 
-    let same_de_wm = !de.is_empty()
-        && !wm_name.is_empty()
-        && de.eq_ignore_ascii_case(wm_name);
+    let same_de_wm = !de.is_empty() && !wm_name.is_empty() && de.eq_ignore_ascii_case(wm_name);
 
-    let value = match (de.is_empty(), wm_name.is_empty() || same_de_wm, wm_type.is_empty()) {
+    let value = match (
+        de.is_empty(),
+        wm_name.is_empty() || same_de_wm,
+        wm_type.is_empty(),
+    ) {
         (false, true, true) => de.to_string(),
         (false, true, false) => format!("{de} ({wm_type})"),
         (true, false, true) => wm_name.to_string(),

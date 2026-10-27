@@ -1144,8 +1144,8 @@ impl Config {
 
             let (cfg, toml_out) = match imported {
                 Some(imp) => {
-                    let s = toml::to_string_pretty(&imp)
-                        .unwrap_or_else(|_| Self::to_default_toml());
+                    let s =
+                        toml::to_string_pretty(&imp).unwrap_or_else(|_| Self::to_default_toml());
                     (imp, s)
                 }
                 None => (Self::default(), Self::to_default_toml()),
@@ -2450,10 +2450,8 @@ separator = 12345
 
     #[test]
     fn test_write_if_not_exists_never_overwrites_user_config() {
-        let dir = std::env::temp_dir().join(format!(
-            "rustfetch_cfg_preserve_{}",
-            std::process::id()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("rustfetch_cfg_preserve_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let cfg_path = dir.join("config.toml");

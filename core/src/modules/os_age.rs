@@ -1,6 +1,4 @@
 use crate::{Info, Module};
-use std::ffi::CString;
-use std::mem::MaybeUninit;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub struct OsAge;
@@ -53,26 +51,9 @@ pub fn format_os_age(birth_secs: u64, now_secs: u64) -> Option<String> {
 }
 
 fn statx_birth_time(path: &str) -> Option<u64> {
-    let c_path = CString::new(path).ok()?;
-    let mut stx = MaybeUninit::<libc::statx>::zeroed();
-    let ret = unsafe {
-        libc::statx(
-            libc::AT_FDCWD,
-            c_path.as_ptr(),
-            libc::AT_SYMLINK_NOFOLLOW,
-            libc::STATX_BTIME,
-            stx.as_mut_ptr(),
-        )
-    };
-    if ret != 0 {
-        return None;
-    }
-    let stx = unsafe { stx.assume_init() };
-    if (stx.stx_mask & libc::STATX_BTIME) != 0 && stx.stx_btime.tv_sec > 946_684_800 {
-        Some(stx.stx_btime.tv_sec as u64)
-    } else {
-        None
-    }
+    let created = std::fs::symlink_metadata(path).ok()?.created().ok()?;
+    let secs = created.duration_since(UNIX_EPOCH).ok()?.as_secs();
+    (secs > 946_684_800).then_some(secs)
 }
 
 pub fn detect_os_birth_timestamp() -> Option<u64> {

@@ -9,8 +9,6 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Platform: Linux](https://img.shields.io/badge/Platform-Linux-orange.svg)](https://github.com/MehmetCanWT/rustfetch)
 
-<img src="images/image_3.png" alt="RustFetch Kitty Image Mode with Dynamic Palette" width="860" />
-
 </div>
 
 ---
@@ -30,23 +28,21 @@
 
 ## 📸 Screenshots & Showcase
 
-<details open>
-<summary><b>🖼️ Click to expand/collapse Distro & Image Mode Gallery</b></summary>
-<br>
+### Example Configurations
 
-| Fedora Linux (ASCII + Rounded Box) | Arch Linux (ASCII + Rounded Box) |
+<p align="center">
+  <img src="images/image_3.png" alt="Example Configuration 1" width="840" />
+</p>
+
+| Example Configuration 2 | Example Configuration 3 |
 | :---: | :---: |
-| <img src="images/Fedora.png" width="430" /> | <img src="images/arch.png" width="430" /> |
+| <img src="images/image_1.png" alt="Example Configuration 2" width="430" /> | <img src="images/image_2.png" alt="Example Configuration 3" width="430" /> |
 
-| Gentoo Linux (ASCII + Rounded Box) | Kitty Image Mode + Adaptive Palette |
-| :---: | :---: |
-| <img src="images/gentoo.png" width="430" /> | <img src="images/image_1.png" width="430" /> |
+### Distro Logos
 
-| Custom Image Mode (Minimal Card) |
-| :---: |
-| <img src="images/image_2.png" width="430" /> |
-
-</details>
+| Fedora Linux | Arch Linux | Gentoo Linux |
+| :---: | :---: | :---: |
+| <img src="images/Fedora.png" alt="Fedora Linux" width="290" /> | <img src="images/arch.png" alt="Arch Linux" width="290" /> | <img src="images/gentoo.png" alt="Gentoo Linux" width="290" /> |
 
 ---
 

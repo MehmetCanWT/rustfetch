@@ -128,7 +128,7 @@ rustfetch --benchmark
 
 ## 📊 Telemetry Modules (31 Built-in Collectors)
 
-Run `rustfetch --list-modules` at any time to inspect all collectors. Full schema details are in [**MODULES.md**](MODULES.md).
+Run `rustfetch --list-modules` at any time to inspect all collectors. Full schema details are in [**docs/08-modules-and-icons.md**](docs/08-modules-and-icons.md).
 
 | Module | Label | Data Source & Highlights |
 | :--- | :--- | :--- |

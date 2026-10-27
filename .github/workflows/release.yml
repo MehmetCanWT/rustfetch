@@ -83,7 +83,7 @@ jobs:
           cp "$TARGET_DIR/rustfetch" "$STAGE/rustfetch"
           cp "$TARGET_DIR/rfetch" "$STAGE/rfetch"
           chmod 755 "$STAGE/rustfetch" "$STAGE/rfetch"
-          cp README.md LICENSE MODULES.md CHANGELOG.md "$STAGE/"
+          cp README.md LICENSE "$STAGE/"
           cp docs/rustfetch.1 "$STAGE/man/rustfetch.1"
 
           if [ "${{ matrix.use_cross }}" = "false" ]; then

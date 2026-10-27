@@ -50,7 +50,7 @@ ln -sf rustfetch.fish %{buildroot}%{_datadir}/fish/vendor_completions.d/rfetch.f
 
 %files
 %license LICENSE
-%doc README.md MODULES.md
+%doc README.md
 %{_bindir}/rustfetch
 %{_bindir}/rfetch
 %{_mandir}/man1/rustfetch.1*

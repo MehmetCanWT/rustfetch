@@ -31,12 +31,12 @@
 ### Example Configurations
 
 <p align="center">
-  <img src="images/image_1.png" alt="Example Configuration 1" width="840" />
+  <img src="images/image_1.png?v=2" alt="Example Configuration 1" width="840" />
 </p>
 
 | Example Configuration 2 | Example Configuration 3 |
 | :---: | :---: |
-| <img src="images/image_2.png" alt="Example Configuration 2" width="430" /> | <img src="images/image_3.png" alt="Example Configuration 3" width="430" /> |
+| <img src="images/image_2.png?v=2" alt="Example Configuration 2" width="430" /> | <img src="images/image_3.png?v=2" alt="Example Configuration 3" width="430" /> |
 
 ### Distro Logos
 

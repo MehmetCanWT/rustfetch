@@ -92,6 +92,20 @@ if [[ -f "CHANGELOG.md" ]]; then
     ' CHANGELOG.md | sed -e '/./,$!d')"
 fi
 
+if [[ -z "$CURATED_NOTES" && "$VERSION" == "0.1.2" ]]; then
+    CURATED_NOTES="$(cat <<'NOTES'
+### ✨ Highlights
+- **Terminal Resize Stability**: Added `SIGWINCH` debouncing, Kitty Synchronized Output (`\x1b[?2026h`), and cell-coordinate image positioning so extreme terminal shrinking/enlarging never causes overlapping logos or duplicated lines.
+- **Bash Prompt Trap Fix**: Fixed `--shell-init bash` `DEBUG` trap firing during `.bashrc` initialization before the first prompt.
+- **Single-Pass Image Palette & Color Cache**: Dominant accent color and 16-color palette are extracted in a single PNG decode pass and cached together in `.color`.
+- **Atomic Self-Update (`--self-update`)**: Binary replacement now writes to a staging file and atomically renames over the running executable (`ETXTBSY`-safe).
+- **Custom Disk Mount Persistence in 3D Mode**: Background module refreshes in `--3d` mode now preserve custom `[disk]` mount paths (`path = "/home"`).
+- **Symlink-Safe Homebrew Package Counting**: Deduplicated canonical Cellar directories across `/home/linuxbrew/.linuxbrew` and `~/.linuxbrew`.
+- **Static Musl Compatibility**: Replaced glibc-only `libc::statx` bindings with portable `std::fs::Metadata::created` so `x86_64-unknown-linux-musl` builds cleanly.
+NOTES
+)"
+fi
+
 # Determine git commit range since previous tag
 PREV_TAG=""
 if git rev-parse --git-dir >/dev/null 2>&1; then

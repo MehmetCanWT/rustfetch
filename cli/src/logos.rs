@@ -55,6 +55,50 @@ pub const GARUDA_YELLOW: &str = "\x1b[38;2;255;170;0m";
 pub const NOBARA_WHITE: &str = "\x1b[38;2;255;255;255m";
 pub const ARCHCRAFT_TEAL: &str = "\x1b[38;2;94;178;167m";
 pub const BAZZITE_PURPLE: &str = "\x1b[38;2;138;79;255m"; // #8a4fff
+pub const CAT_AMBER: &str = "\x1b[38;2;249;175;79m"; // #f9af4f
+pub const CAT_EMERALD: &str = "\x1b[38;2;102;217;160m"; // #66d9a0
+pub const CAT_CREAM: &str = "\x1b[38;2;245;224;220m"; // #f5e0dc
+
+pub fn list_available_logos() -> &'static [(&'static str, &'static str)] {
+    &[
+        ("arch", "Arch Linux (also: arch_small)"),
+        ("fedora", "Fedora Linux (also: fedora_small)"),
+        ("bazzite", "Bazzite (Immutable Gaming OS)"),
+        ("nobara", "Nobara Linux"),
+        ("cachyos", "CachyOS (also: cachyos_small)"),
+        ("nixos", "NixOS (also: nixos_small)"),
+        ("ubuntu", "Ubuntu (also: ubuntu_small)"),
+        ("debian", "Debian GNU/Linux (also: debian_small)"),
+        ("mint", "Linux Mint"),
+        ("manjaro", "Manjaro Linux"),
+        ("endeavouros", "EndeavourOS"),
+        ("garuda", "Garuda Linux"),
+        ("archcraft", "Archcraft"),
+        ("pop", "Pop!_OS"),
+        ("gentoo", "Gentoo Linux"),
+        ("alpine", "Alpine Linux"),
+        ("void", "Void Linux"),
+        ("opensuse", "openSUSE"),
+        ("kali", "Kali Linux"),
+        ("steamos", "SteamOS"),
+        ("artix", "Artix Linux"),
+        ("zorin", "Zorin OS"),
+        ("raspbian", "Raspberry Pi OS"),
+        ("rocky", "Rocky Linux"),
+        ("almalinux", "AlmaLinux"),
+        ("centos", "CentOS Stream"),
+        ("redhat", "Red Hat Enterprise Linux"),
+        ("freebsd", "FreeBSD (also: freebsd_small)"),
+        ("openbsd", "OpenBSD"),
+        ("netbsd", "NetBSD"),
+        ("macos", "macOS / Darwin"),
+        ("windows", "Windows"),
+        ("cat", "RustFetch Cat Mascot (also: cat_small)"),
+        ("bengal", "Bengal Cat (v0.1.2 Codename Mascot)"),
+        ("turkish_van", "Turkish Van Cat — Heterochromia Eyes (v0.1.0 Mascot)"),
+        ("turkish_angora", "Turkish Angora Cat (v0.1.1 Mascot)"),
+    ]
+}
 
 /// A terminal-printable ASCII logo.
 #[derive(Debug, Clone)]
@@ -165,7 +209,31 @@ pub fn get_logo(distro: &str) -> Logo {
         ubuntu_small()
     } else if lower.contains("debian_small") {
         debian_small()
-    // 2. Standard distribution logos
+    } else if lower.contains("cat_small")
+        || lower.contains("bengal_small")
+        || lower.contains("van_small")
+    {
+        cat_small()
+    // 2. Cat Breed Mascot Logos
+    } else if lower.contains("turkish_van") || lower.contains("turkish van") || lower == "van" {
+        turkish_van()
+    } else if lower.contains("turkish_angora")
+        || lower.contains("turkish angora")
+        || lower == "angora"
+    {
+        turkish_angora()
+    } else if lower.contains("bengal") {
+        bengal_cat()
+    } else if lower == "cat"
+        || lower == "kitty_cat"
+        || lower == "kedi"
+        || lower == "maine_coon"
+        || lower == "siamese"
+        || lower == "ragdoll"
+        || lower == "anatolian"
+    {
+        cat_mascot()
+    // 3. Standard distribution logos
     } else if lower.contains("cachyos") || lower.contains("cachy") {
         cachyos()
     } else if lower.contains("freebsd") {
@@ -1363,6 +1431,103 @@ fn archcraft() -> Logo {
         lines,
         color: ARCHCRAFT_TEAL,
         colors: vec![ARCHCRAFT_TEAL, ARCH_CYAN, ARCH_LIGHT, WHITE],
+        width,
+    }
+}
+
+fn cat_mascot() -> Logo {
+    let lines = vec![
+        r##"       $1|\      _,,,---,,_"##,
+        r##" $2ZZZzz $1/,`.-'`'    -.  ;-;;,_"##,
+        r##"      $1|,4-  ) )-,_. ,\ (  `'-'"##,
+        r##"     $2'---''(_/--'  `-'\_)"##,
+        r##""##,
+        r##"        $1/\_/\   $2.---."##,
+        r##"       $1( $3o$1.$3o$1 ) $2/  $1RustFetch"##,
+        r##"        $1> ^ <  $2'---'"##,
+        r##"       $1/|   |\"##,
+        r##"      $1(_|   |_)"##,
+    ];
+    let width = compute_logo_width(&lines);
+    Logo {
+        lines,
+        color: CAT_AMBER,
+        colors: vec![CAT_AMBER, CAT_CREAM, CAT_EMERALD],
+        width,
+    }
+}
+
+fn bengal_cat() -> Logo {
+    let lines = vec![
+        r##"         $1/\_____/\"##,
+        r##"        $1/  $3o   o  $1\"##,
+        r##"       $1( ==  $2^  $1== )"##,
+        r##"        $1)  $2~   ~  $1("##,
+        r##"       $1(  $2(  .  )  $1)"##,
+        r##"      $1( (  )   (  ) )"##,
+        r##"     $1(__(__)___(__)__)"##,
+        r##"        $2"Bengal" v0.1.2"##,
+    ];
+    let width = compute_logo_width(&lines);
+    Logo {
+        lines,
+        color: CAT_AMBER,
+        colors: vec![CAT_AMBER, UBUNTU_ORANGE, CAT_EMERALD],
+        width,
+    }
+}
+
+fn turkish_van() -> Logo {
+    let lines = vec![
+        r##"         $3/\_____/\"##,
+        r##"        $1/  $2o   $3o  $1\"##,
+        r##"       $1( ==  ^  == )"##,
+        r##"        $1)         ("##,
+        r##"       $1(           )"##,
+        r##"      $1( (  )   (  ) )"##,
+        r##"     $1(__(__)___(__)__)"##,
+        r##"       $2"Turkish Van""##,
+    ];
+    let width = compute_logo_width(&lines);
+    Logo {
+        lines,
+        color: WHITE,
+        colors: vec![WHITE, ARCH_LIGHT, CAT_AMBER],
+        width,
+    }
+}
+
+fn turkish_angora() -> Logo {
+    let lines = vec![
+        r##"         $1/\_____/\"##,
+        r##"        $1/  $2o   o  $1\"##,
+        r##"       $1( ==  $3^  $1== )"##,
+        r##"        $1)  ~   ~  ("##,
+        r##"       $1(           )"##,
+        r##"      $1( (  )   (  ) )"##,
+        r##"     $1(__(__)___(__)__)"##,
+        r##"      $2"Turkish Angora""##,
+    ];
+    let width = compute_logo_width(&lines);
+    Logo {
+        lines,
+        color: CAT_CREAM,
+        colors: vec![WHITE, NIXOS_CYAN, CAT_CREAM],
+        width,
+    }
+}
+
+fn cat_small() -> Logo {
+    let lines = vec![
+        r##" $1/\_/\"##,
+        r##"$1( $2o$1.$2o$1 )"##,
+        r##" $1> ^ <"##,
+    ];
+    let width = compute_logo_width(&lines);
+    Logo {
+        lines,
+        color: CAT_AMBER,
+        colors: vec![CAT_AMBER, CAT_EMERALD],
         width,
     }
 }

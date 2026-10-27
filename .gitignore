@@ -21,6 +21,7 @@ Thumbs.db
 
 # Internal Agent & Planning state
 PLAN.md
+DETAYLI_KOD_ANALIZI.md
 .agents/
 skills-lock.json
 

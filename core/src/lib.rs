@@ -7,7 +7,8 @@ pub use ascii::apply_neofetch_colors;
 pub use config::{
     default_icon_for_module, distro_icon, BorderCharsConfig, BorderImageConfig, Config,
 };
-pub use modules::{all_modules, module_by_name};
+pub use modules::update::{codename_for_version, format_version_with_codename, CURRENT_VERSION};
+pub use modules::{all_modules, module_by_name, module_from_config};
 
 #[derive(Debug, Clone)]
 pub struct Info {

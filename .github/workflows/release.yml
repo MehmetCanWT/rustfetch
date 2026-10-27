@@ -1,0 +1,168 @@
+name: Release & Package Builds
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g. v0.1.2)'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  build-tarballs:
+    name: Build - ${{ matrix.platform_name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - rust_target: x86_64-unknown-linux-gnu
+            platform_name: linux-gnu-x86_64
+            use_cross: false
+          - rust_target: x86_64-unknown-linux-musl
+            platform_name: linux-musl-x86_64
+            use_cross: false
+          - rust_target: aarch64-unknown-linux-gnu
+            platform_name: linux-gnu-aarch64
+            use_cross: true
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install System Dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq musl-tools zstd rpm dpkg-dev
+
+      - name: Install Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
+
+      - name: Install Cross
+        if: matrix.use_cross
+        run: cargo install cross --git https://github.com/cross-rs/cross
+
+      - name: Resolve Version
+        id: meta
+        run: |
+          RAW_TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          if [[ "$RAW_TAG" == v* ]]; then
+            VER="${RAW_TAG#v}"
+          else
+            VER="$(grep -E '^version\s*=' Cargo.toml | head -n 1 | sed -E 's/.*"([^"]+)".*/\1/')"
+          fi
+          echo "version=${VER}" >> "$GITHUB_OUTPUT"
+
+      - name: Build Release Binaries
+        run: |
+          if [ "${{ matrix.use_cross }}" = "true" ]; then
+            cross build --release --target ${{ matrix.rust_target }} -p rustfetch
+          else
+            cargo build --release --target ${{ matrix.rust_target }} -p rustfetch
+          fi
+
+      - name: Package Clean Archive & Native Distro Packages
+        run: |
+          VER="${{ steps.meta.outputs.version }}"
+          PLATFORM="${{ matrix.platform_name }}"
+          TARGET_DIR="target/${{ matrix.rust_target }}/release"
+
+          mkdir -p dist
+          STAGE="stage/rustfetch-v${VER}-${PLATFORM}"
+          mkdir -p "$STAGE/completions" "$STAGE/man"
+
+          cp "$TARGET_DIR/rustfetch" "$STAGE/rustfetch"
+          cp "$TARGET_DIR/rfetch" "$STAGE/rfetch"
+          chmod 755 "$STAGE/rustfetch" "$STAGE/rfetch"
+          cp README.md LICENSE MODULES.md CHANGELOG.md "$STAGE/"
+          cp docs/rustfetch.1 "$STAGE/man/rustfetch.1"
+
+          if [ "${{ matrix.use_cross }}" = "false" ]; then
+            "$STAGE/rustfetch" --completions bash > "$STAGE/completions/rustfetch.bash"
+            "$STAGE/rustfetch" --completions zsh > "$STAGE/completions/_rustfetch"
+            "$STAGE/rustfetch" --completions fish > "$STAGE/completions/rustfetch.fish"
+          fi
+
+          # 1. Clean platform tarball (no 'unknown' in filename)
+          ARCHIVE="rustfetch-v${VER}-${PLATFORM}.tar.gz"
+          tar -C stage -czf "dist/${ARCHIVE}" "rustfetch-v${VER}-${PLATFORM}"
+          cp "dist/${ARCHIVE}" "dist/rustfetch-${PLATFORM}.tar.gz"
+
+          # 2. Build NixOS bundle from static musl x86_64 target
+          if [ "$PLATFORM" = "linux-musl-x86_64" ]; then
+            NIX_STAGE="stage/rustfetch-v${VER}-nixos-x86_64"
+            cp -r "$STAGE" "$NIX_STAGE"
+            [ -f flake.nix ] && cp flake.nix "$NIX_STAGE/"
+            tar -C stage -czf "dist/rustfetch-v${VER}-nixos-x86_64.tar.gz" "rustfetch-v${VER}-nixos-x86_64"
+          fi
+
+          # 3. Build native Arch (.pkg.tar.zst), Fedora (.rpm), and Debian (.deb) packages on x86_64 gnu
+          if [ "$PLATFORM" = "linux-gnu-x86_64" ]; then
+            bash scripts/build-packages.sh "$VER" "$STAGE" dist
+          fi
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: packages-${{ matrix.platform_name }}
+          path: dist/*
+
+  publish-release:
+    name: Publish GitHub Release & Changelog
+    needs: build-tarballs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download All Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-Input
+          merge-multiple: true
+
+      - name: Generate Release Notes (with Cat Breed Codename) & Checksums
+        id: notes
+        run: |
+          RAW_TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          if [[ "$RAW_TAG" == v* ]]; then
+            VER="${RAW_TAG#v}"
+            TAG="$RAW_TAG"
+          else
+            VER="$(grep -E '^version\s*=' Cargo.toml | head -n 1 | sed -E 's/.*"([^"]+)".*/\1/')"
+            TAG="v${VER}"
+          fi
+
+          CODENAME="$(bash scripts/release-notes.sh --codename "$VER")"
+          TITLE="$(bash scripts/release-notes.sh --title "$VER")"
+          bash scripts/release-notes.sh "$VER" > RELEASE_NOTES.md
+
+          cd release-Input
+          sha256sum * > SHA256SUMS.txt
+          cd ..
+
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "version=${VER}" >> "$GITHUB_OUTPUT"
+          echo "codename=${CODENAME}" >> "$GITHUB_OUTPUT"
+          echo "title=${TITLE}" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.notes.outputs.tag }}
+          name: ${{ steps.notes.outputs.title }}
+          body_path: RELEASE_NOTES.md
+          draft: false
+          prerelease: false
+          files: |
+            release-Input/*

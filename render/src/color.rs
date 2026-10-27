@@ -58,24 +58,22 @@ fn ensure_visible(c: (u8, u8, u8)) -> (u8, u8, u8) {
     }
 }
 
-pub fn extract_dominant_color(path: &str) -> Option<String> {
-    let color_counts = load_and_sample_image(path)?;
+fn rgb_sv_lum(r: u8, g: u8, b: u8) -> (f64, f64, f64) {
+    let r_f = r as f64 / 255.0;
+    let g_f = g as f64 / 255.0;
+    let b_f = b as f64 / 255.0;
+    let max = r_f.max(g_f).max(b_f);
+    let min = r_f.min(g_f).min(b_f);
+    let s = if max > 0.0 { (max - min) / max } else { 0.0 };
+    let lum = (0.299 * r as f64 + 0.587 * g as f64 + 0.114 * b as f64) / 255.0;
+    (s, max, lum)
+}
 
+fn dominant_from_counts(color_counts: &HashMap<(u8, u8, u8), u32>) -> String {
     let mut candidates: Vec<(f64, (u8, u8, u8))> = Vec::new();
-    for (&(r, g, b), &count) in &color_counts {
-        let r_f = r as f64 / 255.0;
-        let g_f = g as f64 / 255.0;
-        let b_f = b as f64 / 255.0;
-
-        let max = r_f.max(g_f).max(b_f);
-        let min = r_f.min(g_f).min(b_f);
-        let delta = max - min;
-
-        let v = max;
-        let s = if max > 0.0 { delta / max } else { 0.0 };
-
+    for (&(r, g, b), &count) in color_counts {
+        let (s, v, lum) = rgb_sv_lum(r, g, b);
         if s > 0.25 && v > 0.35 && v < 0.98 {
-            let lum = (0.299 * r as f64 + 0.587 * g as f64 + 0.114 * b as f64) / 255.0;
             let score = (count as f64).powf(0.6)
                 * s.powf(1.6)
                 * v.powf(0.8)
@@ -94,31 +92,23 @@ pub fn extract_dominant_color(path: &str) -> Option<String> {
             g = ((g as f64 * factor).round() as u32).min(255) as u8;
             b = ((b as f64 * factor).round() as u32).min(255) as u8;
         }
-        return Some(format!("#{:02x}{:02x}{:02x}", r, g, b));
+        return format!("#{:02x}{:02x}{:02x}", r, g, b);
     }
 
-    Some("#5485b6".to_string())
+    "#5485b6".to_string()
 }
 
-pub fn extract_color_palette(path: &str, count: usize) -> Option<Vec<(u8, u8, u8)>> {
-    let color_counts = load_and_sample_image(path)?;
+fn palette_from_counts(
+    color_counts: &HashMap<(u8, u8, u8), u32>,
+    count: usize,
+) -> Option<Vec<(u8, u8, u8)>> {
     if color_counts.is_empty() {
         return None;
     }
 
     let mut scored_colors: Vec<(f64, (u8, u8, u8))> = Vec::new();
-    for (&(r, g, b), &cnt) in &color_counts {
-        let r_f = r as f64 / 255.0;
-        let g_f = g as f64 / 255.0;
-        let b_f = b as f64 / 255.0;
-
-        let max = r_f.max(g_f).max(b_f);
-        let min = r_f.min(g_f).min(b_f);
-        let delta = max - min;
-        let s = if max > 0.0 { delta / max } else { 0.0 };
-        let v = max;
-        let lum = (0.299 * r as f64 + 0.587 * g as f64 + 0.114 * b as f64) / 255.0;
-
+    for (&(r, g, b), &cnt) in color_counts {
+        let (s, v, lum) = rgb_sv_lum(r, g, b);
         if v > 0.12 && lum < 0.96 {
             let score = (cnt as f64).powf(0.5) * (1.0 + s * 1.5) * (1.0 - (lum - 0.55).abs() * 0.5);
             scored_colors.push((score, (r, g, b)));
@@ -180,6 +170,27 @@ pub fn extract_color_palette(path: &str, count: usize) -> Option<Vec<(u8, u8, u8
     }
 
     Some(palette)
+}
+
+pub fn extract_dominant_color(path: &str) -> Option<String> {
+    let color_counts = load_and_sample_image(path)?;
+    Some(dominant_from_counts(&color_counts))
+}
+
+pub fn extract_color_palette(path: &str, count: usize) -> Option<Vec<(u8, u8, u8)>> {
+    let color_counts = load_and_sample_image(path)?;
+    palette_from_counts(&color_counts, count)
+}
+
+pub fn extract_dominant_and_palette(
+    path: &str,
+    count: usize,
+) -> Option<(String, Option<Vec<(u8, u8, u8)>>)> {
+    let color_counts = load_and_sample_image(path)?;
+    Some((
+        dominant_from_counts(&color_counts),
+        palette_from_counts(&color_counts, count),
+    ))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

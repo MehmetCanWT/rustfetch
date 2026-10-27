@@ -32,7 +32,14 @@ impl Module for FontModule {
         if let Ok(content) = fs::read_to_string(format!("{config_dir}/gtk-3.0/settings.ini")) {
             for line in content.lines() {
                 if let Some(font) = line.strip_prefix("gtk-font-name=") {
-                    return Some(Info::new("Font", format!("{font} [GTK]")));
+                    let cleaned = font
+                        .replace(',', " ")
+                        .split_whitespace()
+                        .collect::<Vec<_>>()
+                        .join(" ");
+                    if !cleaned.is_empty() {
+                        return Some(Info::new("Font", format!("{cleaned} [GTK]")));
+                    }
                 }
             }
         }

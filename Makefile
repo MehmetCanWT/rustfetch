@@ -1,4 +1,4 @@
-.PHONY: test test-unit test-cli fmt lint build release
+.PHONY: test test-unit test-cli fmt lint build release release-notes
 
 test:
 	./scripts/test.sh
@@ -20,3 +20,6 @@ build:
 
 release:
 	cargo build --workspace --release
+
+release-notes:
+	./scripts/release-notes.sh

@@ -3,7 +3,27 @@ use std::mem::MaybeUninit;
 
 use crate::{Info, Module};
 
-pub struct Disk;
+pub struct Disk {
+    pub mount_point: Option<String>,
+}
+
+impl Default for Disk {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Disk {
+    pub const fn new() -> Self {
+        Self { mount_point: None }
+    }
+
+    pub fn with_mount(mount_point: impl Into<String>) -> Self {
+        Self {
+            mount_point: Some(mount_point.into()),
+        }
+    }
+}
 
 impl Module for Disk {
     fn name(&self) -> &'static str {
@@ -11,6 +31,14 @@ impl Module for Disk {
     }
 
     fn detect(&self) -> Option<Info> {
+        if let Some(mount) = &self.mount_point {
+            let trimmed = mount.trim();
+            if !trimmed.is_empty() && trimmed != "/" {
+                let (total, free) = get_disk_usage(trimmed)?;
+                let value = format_disk_usage(total, free)?;
+                return Some(Info::new(format!("Disk ({trimmed})"), value));
+            }
+        }
         let value = read_disk()?;
         Some(Info::new("Disk (/)", value))
     }
@@ -60,9 +88,23 @@ pub fn get_disk_usage(path: &str) -> Option<(u64, u64)> {
     Some((total_bytes, free_bytes))
 }
 
-/// Reads and formats disk usage for the root filesystem (`/`).
+/// Reads and formats disk usage for the root filesystem (`/`),
+/// falling back to `/sysroot` or `/var` on immutable ostree/composefs systems (e.g. Bazzite, Silverblue)
+/// where `/` is a tiny read-only composefs mount (< 1 GiB).
 pub fn read_disk() -> Option<String> {
-    let (total_bytes, free_bytes) = get_disk_usage("/")?;
+    let one_gib = 1024 * 1024 * 1024;
+    let (mut total_bytes, mut free_bytes) = get_disk_usage("/")?;
+    if total_bytes < one_gib {
+        for fallback in ["/sysroot", "/var"] {
+            if let Some((t, f)) = get_disk_usage(fallback) {
+                if t >= one_gib {
+                    total_bytes = t;
+                    free_bytes = f;
+                    break;
+                }
+            }
+        }
+    }
     format_disk_usage(total_bytes, free_bytes)
 }
 
@@ -127,7 +169,7 @@ mod tests {
         assert!(total > 0);
         assert!(total >= free);
 
-        let module = Disk;
+        let module = Disk::new();
         assert_eq!(module.name(), "disk");
         let detected = module.detect();
         assert!(detected.is_some());
@@ -135,6 +177,11 @@ mod tests {
         assert_eq!(info.label, "Disk (/)");
         assert!(info.value.contains("GiB"));
         assert!(info.value.contains('%'));
+
+        let custom_mount = Disk::with_mount("/tmp");
+        if let Some(tmp_info) = custom_mount.detect() {
+            assert_eq!(tmp_info.label, "Disk (/tmp)");
+        }
     }
 
     #[test]

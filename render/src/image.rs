@@ -39,7 +39,37 @@ pub fn render_ex(
     target_cols: usize,
     max_rows: Option<usize>,
 ) -> Option<(usize, usize)> {
+    render_positioned(path, target_cols, max_rows, 0, 0, false)
+}
+
+pub fn render_positioned(
+    path: &str,
+    target_cols: usize,
+    max_rows: Option<usize>,
+    reserve_rows: usize,
+    h_pad: usize,
+    clear_before_emit: bool,
+) -> Option<(usize, usize)> {
     let (cell_w, cell_h) = terminal::get_cell_size().unwrap_or((10, 20));
+    let expected_winsize = terminal::get_winsize_cells();
+
+    let emit_prefix = |is_top_or_bottom: bool| {
+        if clear_before_emit && expected_winsize != terminal::get_winsize_cells() {
+            return false;
+        }
+        print!("\x1b[?2026h");
+        if clear_before_emit {
+            print!("\x1b_Ga=d,d=a\x1b\\\x1b[2J\x1b[3J\x1b[H");
+        }
+        if !is_top_or_bottom && reserve_rows > 1 {
+            print!("{}\x1b[{}A\r", "\n".repeat(reserve_rows - 1), reserve_rows - 1);
+        }
+        if h_pad > 0 {
+            print!("{}", " ".repeat(h_pad));
+        }
+        let _ = std::io::stdout().flush();
+        true
+    };
 
     let img_reader = ImageReader::open(path).ok()?.with_guessed_format().ok()?;
     if img_reader.format() == Some(image::ImageFormat::Gif) {
@@ -56,17 +86,8 @@ pub fn render_ex(
                 return None;
             }
 
-            let (fit_cols, fit_rows) = fit_dimensions(
-                orig_width,
-                orig_height,
-                Some(target_cols),
-                max_rows,
-                target_cols,
-                max_rows.unwrap_or(24),
-                true,
-            );
-            let fit_cols = fit_cols.max(1);
-            let fit_rows = fit_rows.max(1);
+            let (fit_cols, fit_rows) =
+                fit_cell_dimensions(orig_width, orig_height, target_cols, max_rows);
 
             let target_px_width = fit_cols as u32 * cell_w as u32;
             let target_px_height = fit_rows as u32 * cell_h as u32;
@@ -94,6 +115,9 @@ pub fn render_ex(
                 })
                 .collect();
 
+            if !emit_prefix(reserve_rows == 0) {
+                return None;
+            }
             kitty::print_kitty_animation(
                 &kitty_frames,
                 target_px_width,
@@ -114,17 +138,7 @@ pub fn render_ex(
         return None;
     }
 
-    let (fit_cols, fit_rows) = fit_dimensions(
-        orig_width,
-        orig_height,
-        Some(target_cols),
-        max_rows,
-        target_cols,
-        max_rows.unwrap_or(24),
-        true,
-    );
-    let fit_cols = fit_cols.max(1);
-    let fit_rows = fit_rows.max(1);
+    let (fit_cols, fit_rows) = fit_cell_dimensions(orig_width, orig_height, target_cols, max_rows);
 
     let target_px_width = fit_cols as u32 * cell_w as u32;
     let target_px_height = fit_rows as u32 * cell_h as u32;
@@ -138,6 +152,9 @@ pub fn render_ex(
         fr::FilterType::Lanczos3,
     )?;
 
+    if !emit_prefix(reserve_rows == 0) {
+        return None;
+    }
     kitty::print_kitty(
         &buf,
         target_px_width,
@@ -147,6 +164,44 @@ pub fn render_ex(
     );
 
     Some((fit_cols, fit_rows))
+}
+
+pub(crate) fn fit_cell_dimensions(
+    orig_w: u32,
+    orig_h: u32,
+    target_cols: usize,
+    max_rows: Option<usize>,
+) -> (usize, usize) {
+    let (fit_cols, fit_rows) = fit_dimensions(
+        orig_w,
+        orig_h,
+        Some(target_cols),
+        max_rows,
+        target_cols,
+        max_rows.unwrap_or(24),
+        true,
+    );
+    (fit_cols.max(1), fit_rows.max(1))
+}
+
+pub fn image_display_dimensions(
+    path: &str,
+    target_cols: usize,
+    max_rows: Option<usize>,
+) -> Option<(usize, usize)> {
+    if target_cols == 0 {
+        return None;
+    }
+    let (orig_width, orig_height) = image::image_dimensions(path).ok()?;
+    if orig_width == 0 || orig_height == 0 {
+        return None;
+    }
+    Some(fit_cell_dimensions(
+        orig_width,
+        orig_height,
+        target_cols,
+        max_rows,
+    ))
 }
 
 /// Computes target (cols, rows) in terminal character cells while preserving image aspect ratio.

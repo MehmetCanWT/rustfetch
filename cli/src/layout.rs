@@ -346,6 +346,9 @@ pub fn truncate_ansi(s: &str, max_width: usize) -> String {
         out.push_str(&" ".repeat(target_w - current_w));
     }
     out.push('…');
+    if s.contains("\x1b]8;") {
+        out.push_str("\x1b]8;;\x07");
+    }
     if has_color {
         out.push_str(RESET);
     }
@@ -1026,7 +1029,12 @@ pub fn render_with_image(
 
     for i in 0..total_lines {
         if i < right_lines.len() && !right_lines[i].is_empty() {
-            print!("\x1b[{}C{}\r\n", right_indent, right_lines[i]);
+            let line = if max_card_w > 0 && strip_ansi_width(&right_lines[i]) > max_card_w {
+                truncate_ansi(&right_lines[i], max_card_w)
+            } else {
+                right_lines[i].clone()
+            };
+            print!("\r\x1b[{}C{}\x1b[K\r\n", right_indent, line);
         } else {
             print!("\r\n");
         }

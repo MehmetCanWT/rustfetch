@@ -30,6 +30,10 @@ impl<'de> Deserialize<'de> for Config {
         if let Some(b) = raw.border {
             match b {
                 BorderFieldHelper::Bool(en) => general.border = en,
+                BorderFieldHelper::Style(s) => {
+                    general.border = true;
+                    general.border_style = Some(s);
+                }
                 BorderFieldHelper::Table(tbl) => apply_border_helper(&mut general, *tbl),
             }
         }
@@ -220,6 +224,7 @@ pub struct GeneralConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub key_type: Option<String>,
     pub live: bool,
+    pub check_updates: bool,
     #[serde(skip_serializing_if = "Option::is_none", alias = "clear")]
     pub clear_screen: Option<bool>,
     pub border: bool,
@@ -355,6 +360,7 @@ pub struct BorderSectionHelper {
 #[serde(untagged)]
 pub enum BorderFieldHelper {
     Bool(bool),
+    Style(String),
     Table(Box<BorderSectionHelper>),
 }
 
@@ -475,6 +481,8 @@ struct GeneralConfigRaw {
     icon_only: Option<bool>,
     key_type: Option<String>,
     live: Option<bool>,
+    #[serde(alias = "update_check", alias = "notify_updates")]
+    check_updates: Option<bool>,
     #[serde(alias = "clear")]
     clear_screen: Option<bool>,
 
@@ -515,6 +523,116 @@ struct GeneralConfigRaw {
     three_d: Option<bool>,
 }
 
+fn apply_partial_general_raw(cfg: &mut GeneralConfig, raw: GeneralConfigRaw) {
+    if let Some(v) = raw.separator {
+        cfg.separator = v;
+    }
+    if let Some(v) = raw.padding {
+        cfg.padding = v;
+    }
+    if let Some(v) = raw.center {
+        cfg.center = v;
+    }
+    if let Some(v) = raw.icons {
+        cfg.icons = v;
+    }
+    if let Some(v) = raw.icon_only {
+        cfg.icon_only = v;
+    }
+    if let Some(v) = raw.key_type {
+        cfg.key_type = Some(v);
+    }
+    if let Some(v) = raw.live {
+        cfg.live = v;
+    }
+    if let Some(cu) = raw.check_updates {
+        cfg.check_updates = cu;
+    }
+    if let Some(cs) = raw.clear_screen {
+        cfg.clear_screen = Some(cs);
+    }
+
+    if let Some(bf) = raw.border {
+        match bf {
+            BorderFieldHelper::Bool(b) => {
+                cfg.border = b;
+            }
+            BorderFieldHelper::Style(s) => {
+                cfg.border = true;
+                cfg.border_style = Some(s);
+            }
+            BorderFieldHelper::Table(tbl) => {
+                apply_border_helper(cfg, *tbl);
+            }
+        }
+    }
+    if let Some(s) = raw.border_style {
+        cfg.border_style = Some(s);
+    }
+    if let Some(c) = raw.border_color {
+        cfg.border_color = Some(c);
+    }
+    if let Some(ch) = raw.border_chars {
+        cfg.border_chars = Some(ch);
+    }
+    if let Some(t) = raw.border_title {
+        cfg.border_title = Some(t);
+    }
+    if let Some(p) = raw.box_padding {
+        cfg.box_padding = p;
+    }
+
+    if let Some(bif) = raw.border_image {
+        apply_border_image_helper(cfg, bif);
+    }
+    if let Some(pos) = raw.border_image_position {
+        cfg.border_image_position = pos;
+    }
+    if let Some(w) = raw.border_image_width {
+        cfg.border_image_width = Some(w);
+    }
+    if let Some(h) = raw.border_image_height {
+        cfg.border_image_height = Some(h);
+    }
+    if let Some(ox) = raw.border_image_offset_x {
+        cfg.border_image_offset_x = Some(ox);
+    }
+    if let Some(oy) = raw.border_image_offset_y {
+        cfg.border_image_offset_y = Some(oy);
+    }
+    if let Some(zi) = raw.border_image_z_index {
+        cfg.border_image_z_index = Some(zi);
+    }
+    if let Some(pr) = raw.border_image_protocol {
+        cfg.border_image_protocol = Some(pr);
+    }
+    if let Some(par) = raw.border_image_preserve_aspect_ratio {
+        cfg.border_image_preserve_aspect_ratio = Some(par);
+    }
+    if let Some(tot) = raw.border_image_text_on_top {
+        cfg.border_image_text_on_top = Some(tot);
+    }
+
+    if let Some(images) = raw.border_images {
+        cfg.border_images = images;
+    }
+    if let Some(g) = raw.gradient {
+        cfg.gradient = Some(g);
+    }
+    if let Some(t) = raw.theme {
+        cfg.theme = Some(t);
+    }
+    if let Some(c) = raw.colors {
+        cfg.colors = c;
+    }
+    if let Some(l) = raw.logo {
+        cfg.logo = l;
+    }
+    if let Some(td) = raw.three_d {
+        cfg.three_d = Some(td);
+    }
+}
+
 impl<'de> Deserialize<'de> for GeneralConfig {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -522,108 +640,7 @@ impl<'de> Deserialize<'de> for GeneralConfig {
     {
         let raw = GeneralConfigRaw::deserialize(deserializer)?;
         let mut cfg = GeneralConfig::default();
-
-        if let Some(v) = raw.separator {
-            cfg.separator = v;
-        }
-        if let Some(v) = raw.padding {
-            cfg.padding = v;
-        }
-        if let Some(v) = raw.center {
-            cfg.center = v;
-        }
-        if let Some(v) = raw.icons {
-            cfg.icons = v;
-        }
-        if let Some(v) = raw.icon_only {
-            cfg.icon_only = v;
-        }
-        if let Some(v) = raw.key_type {
-            cfg.key_type = Some(v);
-        }
-        if let Some(v) = raw.live {
-            cfg.live = v;
-        }
-        if let Some(cs) = raw.clear_screen {
-            cfg.clear_screen = Some(cs);
-        }
-
-        if let Some(bf) = raw.border {
-            match bf {
-                BorderFieldHelper::Bool(b) => {
-                    cfg.border = b;
-                }
-                BorderFieldHelper::Table(tbl) => {
-                    apply_border_helper(&mut cfg, *tbl);
-                }
-            }
-        }
-        if let Some(s) = raw.border_style {
-            cfg.border_style = Some(s);
-        }
-        if let Some(c) = raw.border_color {
-            cfg.border_color = Some(c);
-        }
-        if let Some(ch) = raw.border_chars {
-            cfg.border_chars = Some(ch);
-        }
-        if let Some(t) = raw.border_title {
-            cfg.border_title = Some(t);
-        }
-        if let Some(p) = raw.box_padding {
-            cfg.box_padding = p;
-        }
-
-        if let Some(bif) = raw.border_image {
-            apply_border_image_helper(&mut cfg, bif);
-        }
-        if let Some(pos) = raw.border_image_position {
-            cfg.border_image_position = pos;
-        }
-        if let Some(w) = raw.border_image_width {
-            cfg.border_image_width = Some(w);
-        }
-        if let Some(h) = raw.border_image_height {
-            cfg.border_image_height = Some(h);
-        }
-        if let Some(ox) = raw.border_image_offset_x {
-            cfg.border_image_offset_x = Some(ox);
-        }
-        if let Some(oy) = raw.border_image_offset_y {
-            cfg.border_image_offset_y = Some(oy);
-        }
-        if let Some(zi) = raw.border_image_z_index {
-            cfg.border_image_z_index = Some(zi);
-        }
-        if let Some(pr) = raw.border_image_protocol {
-            cfg.border_image_protocol = Some(pr);
-        }
-        if let Some(par) = raw.border_image_preserve_aspect_ratio {
-            cfg.border_image_preserve_aspect_ratio = Some(par);
-        }
-        if let Some(tot) = raw.border_image_text_on_top {
-            cfg.border_image_text_on_top = Some(tot);
-        }
-
-        if let Some(images) = raw.border_images {
-            cfg.border_images = images;
-        }
-        if let Some(g) = raw.gradient {
-            cfg.gradient = Some(g);
-        }
-        if let Some(t) = raw.theme {
-            cfg.theme = Some(t);
-        }
-        if let Some(c) = raw.colors {
-            cfg.colors = c;
-        }
-        if let Some(l) = raw.logo {
-            cfg.logo = l;
-        }
-        if let Some(td) = raw.three_d {
-            cfg.three_d = Some(td);
-        }
-
+        apply_partial_general_raw(&mut cfg, raw);
         Ok(cfg)
     }
 }
@@ -681,23 +698,12 @@ pub struct LogoConfig {
     pub animation: AnimationConfig,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize, Serialize)]
-#[serde(default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize)]
 pub struct ModuleConfig {
     pub name: String,
-    #[serde(
-        skip_serializing_if = "Option::is_none",
-        alias = "text",
-        alias = "title",
-        alias = "key"
-    )]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub label: Option<String>,
-    #[serde(
-        skip_serializing_if = "Option::is_none",
-        alias = "logo",
-        alias = "symbol",
-        alias = "prefix"
-    )]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub icon: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub color: Option<String>,
@@ -709,6 +715,55 @@ pub struct ModuleConfig {
     pub bar: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bar_width: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(default)]
+struct ModuleConfigTableHelper {
+    #[serde(alias = "type", alias = "module", alias = "id")]
+    name: String,
+    #[serde(alias = "text", alias = "title", alias = "key")]
+    label: Option<String>,
+    #[serde(alias = "logo", alias = "symbol", alias = "prefix")]
+    icon: Option<String>,
+    color: Option<String>,
+    value: Option<String>,
+    format: Option<String>,
+    bar: Option<bool>,
+    bar_width: Option<usize>,
+    #[serde(alias = "mount", alias = "mount_point")]
+    path: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum ModuleConfigHelper {
+    Name(String),
+    Table(ModuleConfigTableHelper),
+}
+
+impl<'de> Deserialize<'de> for ModuleConfig {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        match ModuleConfigHelper::deserialize(deserializer)? {
+            ModuleConfigHelper::Name(name) => Ok(ModuleConfig::new(name)),
+            ModuleConfigHelper::Table(t) => Ok(ModuleConfig {
+                name: t.name,
+                label: t.label,
+                icon: t.icon,
+                color: t.color,
+                value: t.value,
+                format: t.format,
+                bar: t.bar,
+                bar_width: t.bar_width,
+                path: t.path,
+            }),
+        }
+    }
 }
 
 impl Default for LogoConfig {
@@ -741,6 +796,7 @@ impl Default for GeneralConfig {
             icon_only: false,
             key_type: None,
             live: false,
+            check_updates: true,
             clear_screen: None,
             border: false,
             border_style: None,
@@ -813,8 +869,12 @@ fn modules_from(names: &[&str]) -> Vec<ModuleConfig> {
 }
 
 pub fn default_icon_for_module(name: &str) -> Option<&'static str> {
+    if name.starts_with("disk:") {
+        return Some("󰋊");
+    }
     match name {
         "os" => Some("󰌽"),
+        "os_age" | "age" => Some("󰃭"),
         "host" => Some("󰌢"),
         "board" => Some("󰘚"),
         "kernel" => Some("󰒋"),
@@ -826,14 +886,17 @@ pub fn default_icon_for_module(name: &str) -> Option<&'static str> {
         "terminal" => Some("󰆍"),
         "cpu" => Some("󰍛"),
         "gpu" => Some("󰢮"),
+        "gpu_driver" | "driver" => Some("󰢮"),
         "memory" => Some("󰘚"),
         "swap" => Some("󰓡"),
         "disk" => Some("󰋊"),
         "battery" => Some("󰂁"),
+        "power_profile" | "power" => Some("󰓅"),
         "brightness" => Some("󰃠"),
         "cpu_usage" => Some("󰓅"),
         "bluetooth" => Some("󰂯"),
         "local_ip" => Some("󰩟"),
+        "net_io" | "network" | "net" => Some("󰛳"),
         "locale" => Some("󰗊"),
         "temp" => Some("󰔏"),
         "sound" => Some("󰕾"),
@@ -843,6 +906,7 @@ pub fn default_icon_for_module(name: &str) -> Option<&'static str> {
         "processes" => Some("󰒋"),
         "init" | "initsystem" => Some(""),
         "container" | "vm" => Some("󰡨"),
+        "update" => Some("󰚰"),
         "custom" => Some("󰅐"),
         _ => None,
     }
@@ -1074,22 +1138,63 @@ impl Config {
     pub fn load() -> Self {
         let path = Self::config_path();
         if !path.exists() {
-            let cfg = Self::find_fastfetch_config()
+            let imported = Self::find_fastfetch_config()
                 .and_then(|ff_path| std::fs::read_to_string(ff_path).ok())
-                .and_then(|content| Self::import_from_fastfetch(&content))
-                .unwrap_or_default();
-            if let Ok(toml_str) = toml::to_string_pretty(&cfg) {
-                if let Some(parent) = path.parent() {
-                    let _ = std::fs::create_dir_all(parent);
+                .and_then(|content| Self::import_from_fastfetch(&content));
+
+            let (cfg, toml_out) = match imported {
+                Some(imp) => {
+                    let s = toml::to_string_pretty(&imp)
+                        .unwrap_or_else(|_| Self::to_default_toml());
+                    (imp, s)
                 }
-                let _ = std::fs::write(&path, &toml_str);
-            }
+                None => (Self::default(), Self::to_default_toml()),
+            };
+
+            Self::write_if_not_exists(&path, &toml_out);
             return cfg;
         }
         Self::load_from(&path).unwrap_or_else(|err| {
             eprintln!("{err}");
             Self::default()
         })
+    }
+
+    /// Writes `content` to `path` ONLY if `path` does not already exist (`create_new(true)`).
+    /// Guarantees that an existing user configuration file is never overwritten.
+    pub fn write_if_not_exists(path: &Path, content: &str) -> bool {
+        if path.exists() {
+            return false;
+        }
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        use std::io::Write;
+        if let Ok(mut file) = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(path)
+        {
+            file.write_all(content.as_bytes()).is_ok()
+        } else {
+            false
+        }
+    }
+
+    /// Creates a `.bak` backup of `path` if `path` exists and is non-empty.
+    pub fn backup_if_exists(path: &Path) -> Option<PathBuf> {
+        if !path.is_file() {
+            return None;
+        }
+        let meta = std::fs::metadata(path).ok()?;
+        if meta.len() == 0 {
+            return None;
+        }
+        let mut bak = path.as_os_str().to_os_string();
+        bak.push(".bak");
+        let bak_path = PathBuf::from(bak);
+        std::fs::copy(path, &bak_path).ok()?;
+        Some(bak_path)
     }
 
     pub fn load_from(path: &Path) -> Result<Self, String> {
@@ -1117,7 +1222,104 @@ impl Config {
     }
 
     pub fn from_toml(content: &str) -> Result<Self, toml::de::Error> {
-        toml::from_str(content)
+        match toml::from_str::<Self>(content) {
+            Ok(cfg) => Ok(cfg),
+            Err(err) => {
+                if let Some(salvaged) = Self::salvage_partial_toml(content) {
+                    Ok(salvaged)
+                } else {
+                    Err(err)
+                }
+            }
+        }
+    }
+
+    /// Fault-tolerant recovery for older or partially invalid user `config.toml` files.
+    /// If a single field has a deprecated or invalid value type, preserves all other valid
+    /// user settings instead of discarding the entire configuration.
+    fn salvage_partial_toml(content: &str) -> Option<Self> {
+        let root: toml::Table = content.parse().ok()?;
+        let mut cfg = Config::default();
+        let mut recovered_any = false;
+
+        if let Some(toml::Value::Table(gen_tbl)) = root.get("general") {
+            for (k, v) in gen_tbl {
+                let mut single_gen = toml::Table::new();
+                single_gen.insert(k.clone(), v.clone());
+                let val = toml::Value::Table(single_gen);
+                if let Ok(partial_raw) = GeneralConfigRaw::deserialize(val) {
+                    apply_partial_general_raw(&mut cfg.general, partial_raw);
+                    recovered_any = true;
+                }
+            }
+        }
+
+        for top_key in ["border", "border_image", "border_images", "colors", "logo"] {
+            if let Some(v) = root.get(top_key) {
+                let mut single_top = toml::Table::new();
+                single_top.insert(top_key.to_string(), v.clone());
+                if let Ok(partial_cfg) = Config::deserialize(toml::Value::Table(single_top)) {
+                    match top_key {
+                        "border" => {
+                            cfg.general.border = partial_cfg.general.border;
+                            cfg.general.border_style = partial_cfg.general.border_style;
+                            cfg.general.border_color = partial_cfg.general.border_color;
+                            cfg.general.border_chars = partial_cfg.general.border_chars;
+                            cfg.general.border_title = partial_cfg.general.border_title;
+                            cfg.general.box_padding = partial_cfg.general.box_padding;
+                        }
+                        "border_image" => {
+                            cfg.general.border_image = partial_cfg.general.border_image;
+                            cfg.general.border_image_position =
+                                partial_cfg.general.border_image_position;
+                            cfg.general.border_image_width = partial_cfg.general.border_image_width;
+                            cfg.general.border_image_height =
+                                partial_cfg.general.border_image_height;
+                            cfg.general.border_image_offset_x =
+                                partial_cfg.general.border_image_offset_x;
+                            cfg.general.border_image_offset_y =
+                                partial_cfg.general.border_image_offset_y;
+                            cfg.general.border_image_z_index =
+                                partial_cfg.general.border_image_z_index;
+                            cfg.general.border_image_protocol =
+                                partial_cfg.general.border_image_protocol;
+                            cfg.general.border_image_preserve_aspect_ratio =
+                                partial_cfg.general.border_image_preserve_aspect_ratio;
+                            cfg.general.border_image_text_on_top =
+                                partial_cfg.general.border_image_text_on_top;
+                        }
+                        "border_images" => {
+                            cfg.general.border_images = partial_cfg.general.border_images;
+                        }
+                        "colors" => {
+                            cfg.general.colors = partial_cfg.general.colors;
+                        }
+                        "logo" => {
+                            cfg.general.logo = partial_cfg.general.logo;
+                        }
+                        _ => {}
+                    }
+                    recovered_any = true;
+                }
+            }
+        }
+
+        if let Some(toml::Value::Array(mods_arr)) = root.get("modules") {
+            let mut valid_mods = Vec::new();
+            for item in mods_arr {
+                if let Ok(mc) = ModuleConfig::deserialize(item.clone()) {
+                    if !mc.name.trim().is_empty() {
+                        valid_mods.push(mc);
+                    }
+                }
+            }
+            if !valid_mods.is_empty() {
+                cfg.modules = valid_mods;
+                recovered_any = true;
+            }
+        }
+
+        recovered_any.then_some(cfg)
     }
 
     pub fn to_default_toml() -> String {
@@ -1149,6 +1351,9 @@ icon_only = false
 
 # Run in live interactive system monitor mode (continuous refresh)
 live = false
+
+# Check GitHub repository for updates and display an Update row at the bottom when available
+check_updates = true
 
 # Preset theme: "catppuccin", "nord", "dracula", "gruvbox", "tokyonight", "rosepine", "solarized", "monokai", "cyberpunk"
 # theme = "catppuccin"
@@ -1362,9 +1567,10 @@ infinite = true
 # Configure which modules are shown, their order, custom labels, icons, and formats.
 #
 # Available modules:
-#   os, host, board, kernel, uptime, packages, shell, desktop, font,
-#   terminal, cpu, cpu_usage, temp, gpu, memory, swap, disk, battery,
-#   brightness, display, sound, wifi, local_ip, locale, processes, media,
+#   os, os_age, host, board, kernel, uptime, packages, shell, desktop, font,
+#   terminal, cpu, cpu_usage, temp, gpu, gpu_driver, memory, swap, disk,
+#   battery, power_profile, brightness, display, sound, wifi, net_io,
+#   local_ip, locale, processes, media, init, container, update,
 #   break (blank spacer line), divider (horizontal rule), custom
 #
 # Optional per-module fields:
@@ -1374,6 +1580,7 @@ infinite = true
 #   format    - Value template (e.g. "{value}", "{}")
 #   bar       - true/false: display percentage progress bar
 #   bar_width - Width of progress bar in characters (default: 10)
+#   path      - Mount point for disk module (e.g. path = "/home")
 #   value     - Static text value (for name = "custom")
 
 [[modules]]
@@ -1630,6 +1837,10 @@ fn map_fastfetch_type(ff_type: &str) -> Option<&'static str> {
         "temp" | "temperature" => Some("temp"),
         "init" | "initsystem" => Some("init"),
         "container" | "vm" => Some("container"),
+        "os_age" | "age" | "disk_age" => Some("os_age"),
+        "power_profile" | "powerprofile" | "power" => Some("power_profile"),
+        "gpu_driver" | "gpudriver" | "vulkan" | "opengl" => Some("gpu_driver"),
+        "net_io" | "netio" | "network" => Some("net_io"),
         _ => None,
     }
 }
@@ -2220,5 +2431,95 @@ separator = 12345
         let bi = BorderImageConfig::default();
         assert_eq!(bi.position, "behind");
         assert!(bi.is_background());
+    }
+
+    #[test]
+    fn test_check_updates_config_and_aliases() {
+        let cfg = Config::default();
+        assert!(cfg.general.check_updates);
+
+        let disabled: Config = toml::from_str("[general]\ncheck_updates = false\n").unwrap();
+        assert!(!disabled.general.check_updates);
+
+        let alias1: Config = toml::from_str("[general]\nupdate_check = false\n").unwrap();
+        assert!(!alias1.general.check_updates);
+
+        let alias2: Config = toml::from_str("[general]\nnotify_updates = false\n").unwrap();
+        assert!(!alias2.general.check_updates);
+    }
+
+    #[test]
+    fn test_write_if_not_exists_never_overwrites_user_config() {
+        let dir = std::env::temp_dir().join(format!(
+            "rustfetch_cfg_preserve_{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let cfg_path = dir.join("config.toml");
+
+        let user_custom = "[general]\nseparator = \" -> \"\ntheme = \"catppuccin\"\n";
+        assert!(Config::write_if_not_exists(&cfg_path, user_custom));
+        assert_eq!(std::fs::read_to_string(&cfg_path).unwrap(), user_custom);
+
+        // A subsequent call (e.g. after an update) MUST NOT overwrite the existing file
+        assert!(!Config::write_if_not_exists(
+            &cfg_path,
+            &Config::to_default_toml()
+        ));
+        assert_eq!(std::fs::read_to_string(&cfg_path).unwrap(), user_custom);
+
+        // And backup_if_exists creates config.toml.bak
+        let bak = Config::backup_if_exists(&cfg_path).expect("backup should be created");
+        assert_eq!(std::fs::read_to_string(&bak).unwrap(), user_custom);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_salvage_partial_toml_and_shorthand_modules() {
+        // Shorthand string modules + border style string
+        let shorthand = r#"
+        [general]
+        separator = " :: "
+        border = "rounded"
+        modules = ["os", "kernel", "cpu"]
+        "#;
+        // Note: modules at top level vs under general
+        let shorthand_top = r#"
+        modules = ["os", "kernel", "cpu"]
+        [general]
+        separator = " :: "
+        border = "rounded"
+        "#;
+        let cfg = Config::from_toml(shorthand_top).unwrap();
+        assert_eq!(cfg.general.separator, " :: ");
+        assert!(cfg.general.border);
+        assert_eq!(cfg.general.border_style.as_deref(), Some("rounded"));
+        assert_eq!(cfg.modules.len(), 3);
+        assert_eq!(cfg.modules[0].name, "os");
+        let _ = shorthand;
+
+        // Fault-tolerant salvage when one field has an incompatible type
+        let partially_broken = r#"
+        [general]
+        separator = " >> "
+        theme = "dracula"
+        padding = "invalid_number_type"
+        center = true
+
+        [[modules]]
+        name = "os"
+
+        [[modules]]
+        name = "cpu"
+        "#;
+        let salvaged = Config::from_toml(partially_broken).expect("should salvage valid fields");
+        assert_eq!(salvaged.general.separator, " >> ");
+        assert_eq!(salvaged.general.theme.as_deref(), Some("dracula"));
+        assert!(salvaged.general.center);
+        assert_eq!(salvaged.modules.len(), 2);
+        assert_eq!(salvaged.modules[0].name, "os");
+        assert_eq!(salvaged.modules[1].name, "cpu");
     }
 }

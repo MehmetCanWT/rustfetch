@@ -105,22 +105,11 @@ impl Module for PackagesModule {
             packages.push(format!("{snap_count} (snap)"));
         }
 
-        let brew_count = fs::read_dir("/home/linuxbrew/.linuxbrew/Cellar")
-            .map(|d| {
-                d.flatten()
-                    .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
-                    .count()
-            })
-            .unwrap_or(0)
-            + std::env::var("HOME")
-                .ok()
-                .and_then(|h| fs::read_dir(format!("{h}/.linuxbrew/Cellar")).ok())
-                .map(|d| {
-                    d.flatten()
-                        .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
-                        .count()
-                })
-                .unwrap_or(0);
+        let mut brew_paths = vec![std::path::PathBuf::from("/home/linuxbrew/.linuxbrew/Cellar")];
+        if let Ok(home) = std::env::var("HOME") {
+            brew_paths.push(std::path::PathBuf::from(format!("{home}/.linuxbrew/Cellar")));
+        }
+        let brew_count = count_brew_cellars(&brew_paths);
         if brew_count > 0 {
             packages.push(format!("{brew_count} (brew)"));
         }
@@ -167,9 +156,48 @@ pub fn count_nix_packages() -> usize {
     count
 }
 
+pub fn count_brew_cellars(paths: &[std::path::PathBuf]) -> usize {
+    let mut seen = Vec::new();
+    let mut total = 0;
+    for path in paths {
+        let Ok(canon) = fs::canonicalize(path) else {
+            continue;
+        };
+        if seen.contains(&canon) {
+            continue;
+        }
+        seen.push(canon.clone());
+        if let Ok(entries) = fs::read_dir(&canon) {
+            total += entries
+                .flatten()
+                .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
+                .count();
+        }
+    }
+    total
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_count_brew_cellars_deduplicates_symlinks() {
+        let tmp = std::env::temp_dir().join(format!("rustfetch_brew_test_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp);
+        let cellar = tmp.join("Cellar");
+        fs::create_dir_all(cellar.join("ripgrep")).unwrap();
+        fs::create_dir_all(cellar.join("fd")).unwrap();
+        fs::write(cellar.join("README"), b"ignore").unwrap();
+
+        let alias = tmp.join("CellarAlias");
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&cellar, &alias).unwrap();
+
+        let count = count_brew_cellars(&[cellar.clone(), alias, cellar]);
+        let _ = fs::remove_dir_all(&tmp);
+        assert_eq!(count, 2);
+    }
 
     #[test]
     fn test_count_apk_packages() {

@@ -11,7 +11,7 @@ rustfetch (cli/)  ──┬──► rustfetch-core (core/)
                     └──► rustfetch-render (render/)
 ```
 
-- **`rustfetch-core` (`core/`)**: Sistem bilgisi toplama (`Module` trait + 27 modül), yapılandırma (`Config`, TOML + Fastfetch JSON/JSONC içe aktarma), disk önbellekleme (`Cache`), ASCII logo ayrıştırma ve Neofetch renk kodları. `render` veya `cli`'ye **bağımlı değildir**.
+- **`rustfetch-core` (`core/`)**: Sistem bilgisi toplama (`Module` trait + 28 modül, GitHub güncelleme kontrolü `update` dahil), yapılandırma (`Config`, TOML + Fastfetch JSON/JSONC içe aktarma), disk önbellekleme (`Cache`), ASCII logo ayrıştırma ve Neofetch renk kodları. `render` veya `cli`'ye **bağımlı değildir**.
 - **`rustfetch-render` (`render/`)**: Terminal protokol tespiti (Kitty, Sixel, hücre piksel boyutu), görsel yeniden boyutlandırma (`resize_rgba`, `fit_dimensions`), Kitty/Sixel/Halfblock ve arka plan görsel işleme, 3B ASCII model ve ışıklandırma motoru (`three_d`), renk paleti/tema/baskın renk çıkarma (`color`). `core` veya `cli`'ye **bağımlı değildir**.
 - **`rustfetch` (`cli/`)**: Komut satırı argümanları (`Cli`), çalışma modları (`run_once`, `run_3d`, `run_ascii_animation`, `run_live`, `run_json`, `run_benchmark`), yerleşim/kutu/kenarlık/palet/metin sarma motoru (`layout.rs`), gömülü dağıtım logoları (`logos.rs`) ve ikili giriş noktaları (`main.rs`, `bin/rfetch.rs`).
 
@@ -25,7 +25,9 @@ rustfetch (cli/)  ──┬──► rustfetch-core (core/)
 | `config.toml` | Örnek/referans kullanıcı yapılandırma dosyası. | `core/src/config.rs` (`Config::to_default_toml`) ile uyumlu şema. |
 | `scripts/test.sh` | Tam doğrulama betiği: `cargo fmt --check`, `cargo test --workspace`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo build --workspace --release` ve `scripts/test-cli.sh`. | CI ve yerel doğrulama. |
 | `scripts/test-cli.sh` | Derlenen `rustfetch` ve `rfetch` ikilileri üzerinde uçtan uca CLI bayrak/preset/JSON/config duman testleri. | `target/release/rustfetch`, `target/release/rfetch`. |
-| `install.sh` / `Makefile` / `flake.nix` / `packaging/` | Kurulum (Bazzite `rpm-ostree` + Homebrew `brew` + `rustup` dahil), paketleme (AUR, deb, rpm, Nix) ve tamamlama/man dosyalarının kurulumu. | `cli/` ikilileri ve `completions/`, `man/`. |
+| `install.sh` / `Makefile` / `flake.nix` / `packaging/` | Kurulum (Bazzite `rpm-ostree` + Homebrew `brew` + `rustup` dahil, güncelleme sırasında mevcut `config.toml`'u korur), paketleme (AUR, deb, rpm, Nix) ve tamamlama/man dosyalarının kurulumu. | `cli/` ikilileri ve `completions/`, `man/`. |
+| `.github/workflows/release.yml` & `scripts/build-packages.sh` & `scripts/release-notes.sh` | Otomatik GitHub Releases iş akışı: `unknown` içermeyen temiz platform arşivleri (`linux-gnu`, `linux-musl`, `nixos`), yerel dağıtım paketleri (`.pkg.tar.zst` Arch, `.rpm` Fedora/Bazzite, `.deb` Debian/Ubuntu), kedi cinsi sürüm kod adları ve otomatik `CHANGELOG.md` sürüm notu üretimi. | `Cargo.toml`, `CHANGELOG.md`, `packaging/`. |
+| `CHANGELOG.md` | Semantik sürüm geçmişi ve Kedi Cinsi Kod Adları (`Turkish Van`, `Turkish Angora`, `Bengal`, `Maine Coon`, `Abyssinian`, vb.) kaydı. | `scripts/release-notes.sh`, `core/src/modules/update.rs`. |
 | `images/` | Test ve varsayılan görsel varlıkları (örn. `images/arch.png`). | `render/src/image.rs` ve `cli/src/layout.rs` birim testleri. |
 
 ---
@@ -33,81 +35,85 @@ rustfetch (cli/)  ──┬──► rustfetch-core (core/)
 ## 3. `rustfetch-core` (`core/`) Detaylı Harita
 
 ### `core/src/lib.rs`
-- **Görevi**: Crate kök modülü; alt modülleri (`ascii`, `cache`, `config`, `modules`) dışa aktarır.
+- **Görevi**: Crate kök modülü; alt modülleri (`ascii`, `cache`, `config`, `modules`) dışa aktarır ve `Info`, `Module`, `detect_all` yapılarını tanımlar.
 - **Dışa Aktarılanlar (`pub use`)**:
-  - `ascii::{apply_neofetch_colors, parse_ascii_logo, AsciiLogo}`
-  - `cache::Cache`
-  - `config::{default_icon_for_module, distro_icon, AnimationConfig, BorderCharsConfig, BorderImageConfig, ColorsConfig, Config, GeneralConfig, LogoConfig, ModuleConfig, ThreeDConfig}`
-  - `modules::{all_modules, detect_all, detect_all_cached, module_by_name, Module}`
+  - `ascii::apply_neofetch_colors`
+  - `config::{default_icon_for_module, distro_icon, BorderCharsConfig, BorderImageConfig, Config}`
+  - `modules::update::{codename_for_version, format_version_with_codename, CURRENT_VERSION}`
+  - `modules::{all_modules, module_by_name}`
+  - `Info`, `Module`, `detect_all`
 - **Kim Kullanır**: `cli/src/lib.rs`, `cli/src/layout.rs`, `cli/src/logos.rs`.
 
 ### `core/src/config.rs`
 - **Görevi**: Tüm TOML yapılandırma şeması, Fastfetch JSON/JSONC içe aktarıcı (`import_from_fastfetch`, `strip_jsonc`), preset profiller (`Config::from_preset`), varsayılan modül ikonları (`default_icon_for_module`, `distro_icon` — Fedora/Bazzite/Nobara dahil) ve kenarlık karakter setleri (`BorderCharsConfig::from_style`).
 - **Önemli Yapılar ve Fonksiyonlar**:
   - `Config`: `{ general: GeneralConfig, modules: Vec<ModuleConfig> }`
-    - `Config::load()` -> `~/.config/rustfetch/config.toml` (veya `XDG_CONFIG_HOME`) okur; yoksa Fastfetch yapılandırmasını (`find_fastfetch_config`) içe aktarır veya `Config::default()` yazar.
-    - `Config::load_from(path)` -> Dosya uzantısı `.json`/`.jsonc` ise `import_from_fastfetch`, değilse `from_toml` (başarısız olursa JSONC fallback) çalıştırır.
+    - `Config::load()` -> `~/.config/rustfetch/config.toml` (veya `XDG_CONFIG_HOME`) okur; mevcut yapılandırmanın üzerine asla yazmaz (`write_if_not_exists`); yoksa Fastfetch yapılandırmasını (`find_fastfetch_config`) içe aktarır veya `Config::to_default_toml()` yazar.
+    - `Config::write_if_not_exists(path, content)` & `Config::backup_if_exists(path)` -> Kullanıcı yapılandırmasının güncelleme veya yeniden üretim (`--generate-config`, `--import-fastfetch`) sırasında silinmesini/bozulmasını önler (`config.toml.bak` yedeklemesi).
+    - `Config::load_from(path)` & `Config::from_toml(content)` -> Dosya uzantısı `.json`/`.jsonc` ise `import_from_fastfetch`, değilse `from_toml` (hata durumunda `salvage_partial_toml` ile geçerli tüm kullanıcı ayarlarını kurtarır, ardından JSONC fallback) çalıştırır.
     - `Config::from_preset(name)` -> `"minimal"`, `"clean"`, `"dots"`, `"card"`/`"modern-card"`, `"brackets"`, `"neofetch"`, `"retro"`, `"modern"`, `"compact"`, `"default"` profillerini `modules_from(&[...])` yardımcısıyla üretir.
-    - `Config::to_default_toml()` -> Açıklamalı varsayılan `config.toml` metni üretir (`--gen-config` ve `--init` tarafından kullanılır).
-  - `GeneralConfig`: Ayırıcı, boşluk, ortalama, ikonlar, `BorderConfig` (`[general.border]` veya üst seviye `[border]` tablosu), `BorderImageConfig` (`border_image` + `border_images` -> `active_border_images()`), `ColorsConfig`, `LogoConfig`, tema ve gradyan ayarları.
-  - `BorderCharsConfig::from_style(style)` -> `"rounded"`, `"single"`, `"double"`, `"thick"`, `"ascii"`, `"dots"`, `"blocks"`, `"brackets"` stillerini eşler.
+    - `Config::to_default_toml()` -> Açıklamalı varsayılan `config.toml` metni üretir (`--print-default-config`, `--dump-config` ve `--generate-config` tarafından kullanılır).
+  - `GeneralConfig`: Ayırıcı, boşluk, ortalama, ikonlar, `check_updates` (GitHub güncelleme bildirimi aç/kapat), `border` (`[general.border]` veya üst seviye `[border]` tablosu), `BorderImageConfig` (`border_image` + `border_images` -> `active_border_images()`), `ColorsConfig`, `LogoConfig`, tema ve gradyan ayarları.
+  - `BorderCharsConfig::from_style(style)` -> `"rounded"`, `"single"`, `"double"`, `"thick"`, `"ascii"`, `"dots"`, `"block"`, `"brackets"` stillerini eşler.
   - `LogoConfig`, `ThreeDConfig` (bool veya tablo olarak deserialize edilebilir), `AnimationConfig`, `ModuleConfig::new(name)`.
 - **Kim Kullanır**: `cli/src/lib.rs`, `cli/src/layout.rs`.
 
 ### `core/src/ascii.rs`
-- **Görevi**: ASCII logo şablonlarını (`$1`..`$9` renk yer tutucuları) ve çok kareli ASCII animasyon dosyalarını ayrıştırma.
+- **Görevi**: ASCII logo şablonlarını (`$1`..`$6` renk yer tutucuları) ve çok kareli ASCII animasyon dosyalarını ayrıştırma.
 - **Önemli Yapılar ve Fonksiyonlar**:
-  - `AsciiLogo`: `{ lines: &'static [&'static str], color: &'static str, width: usize }`
-    - `colored_lines()` / `colored_lines_with_custom(primary_override, custom_palette)`
-  - `parse_ascii_logo(raw, color)`
-  - `apply_neofetch_colors(raw, colors)` -> `$1`..`$9` ve `${c1}`..`${c9}` etiketlerini ANSI renk kodlarıyla değiştirir.
-  - `load_ascii_lines(path)` -> Dosyadan veya dizinden ASCII satırlarını yükler (`cli::run_3d` kullanır).
-  - `load_ascii_frames(path)` -> `===FRAME===` ayırıcılı tek dosyadan veya dizindeki sıralı dosyalardan animasyon karelerini yükler (`cli::run_ascii_animation` kullanır).
+  - `apply_neofetch_colors(raw, colors)` -> `$1`..`$6` ve `${c1}`..`${c6}` etiketlerini ANSI renk kodlarıyla değiştirir.
+  - `load_ascii_lines(path)` -> Dosyadan ASCII satırlarını yükler (`cli::run_3d` kullanır).
+  - `load_ascii_frames(path)` -> `===FRAME===` ayırıcılı tek dosyadan veya dizindeki doğal sıralı (`natural_sort_key`) dosyalardan animasyon karelerini yükler (`cli::run_ascii_animation` kullanır).
 - **Kim Kullanır**: `cli/src/logos.rs`, `cli/src/lib.rs`.
 
 ### `core/src/cache.rs`
-- **Görevi**: Değişmeyen donanım bilgilerini (örn. `cpu`, `gpu`, `host`, `board`, `os`, `kernel`) `~/.cache/rustfetch/cache.json` altında önyükleme kimliği (`boot_id`) ve TTL (300 sn) ile önbellekleme.
+- **Görevi**: Yavaş veya ağ/donanım tabanlı modül sonuçlarını (`packages`, `gpu`, `update`) `$XDG_CACHE_HOME/rustfetch/<module_name>` altında TTL ve atomik yazma-yeniden adlandırma (`write`) ile önbellekleme.
 - **Önemli Yapılar ve Fonksiyonlar**:
-  - `Cache::load()`, `Cache::save()`, `Cache::get(key)`, `Cache::set(key, val)`.
-- **Kim Kullanır**: `core/src/modules/mod.rs` (`detect_all_cached`).
+  - `Cache::new(module_name)`, `Cache::read(ttl)`, `Cache::write(value)`.
+- **Kim Kullanır**: `core/src/modules/packages.rs`, `core/src/modules/gpu.rs`, `core/src/modules/update.rs`.
 
-### `core/src/modules/` (27 Sistem Modülü)
+### `core/src/modules/` (32 Sistem Modülü)
 - **`core/src/modules/mod.rs`**:
-  - `pub trait Module: Send + Sync { fn name(&self) -> &str; fn label(&self) -> &str; fn detect(&self) -> Option<String>; fn is_slow(&self) -> bool; fn usage_percentage(&self) -> Option<u8>; }`
-  - `module_by_name(name)` -> Modül adını (`"os"`, `"cpu"`, `"break"`, `"divider"`, `"custom"`, vb.) ilgili `Box<dyn Module>` örneğine çözümler.
-  - `all_modules()` -> Varsayılan 26 modül adını `module_by_name` üzerinden üretir.
-  - `detect_all_cached(modules, use_cache)` -> Statik modülleri (`os`, `host`, `board`, `kernel`, `cpu`, `gpu`) `Cache` üzerinden, dinamik/hızlı modülleri (`std::thread::scope`) paralel thread'lerde çalıştırır.
+  - `pub trait Module: Send + Sync { fn name(&self) -> &'static str; fn detect(&self) -> Option<Info>; }` (`core/src/lib.rs` içinde tanımlı).
+  - `module_by_name(name)` & `module_from_config(mc)` -> Modül adını (`"os"`, `"os_age"`, `"power_profile"`, `"gpu_driver"`, `"net_io"`, `"disk:/home"`, `"update"`, vb.) ilgili `Box<dyn Module>` örneğine çözümler.
+  - `all_modules()` -> Varsayılan 26 sistem modülünü `module_by_name` üzerinden üretir.
+  - `detect_all(modules)` -> Tüm modülleri `std::thread::scope` ile paralel thread'lerde çalıştırır.
 - **Alt Modüller (`core/src/modules/*.rs`)**:
-  - `os.rs` (`OsModule`): `/etc/os-release` + mimari (`uname -m`).
-  - `host.rs` (`HostModule`): `/sys/devices/virtual/dmi/id/{sys_vendor,product_name,product_version}` + cihaz ağacı fallback (`parse_host` `board.rs` tarafından da kullanılır).
-  - `board.rs` (`BoardModule`): `/sys/class/dmi/id/board_{vendor,name,version}` (`/sys/devices/virtual/dmi/id/` fallback ile `host::parse_host` kullanır).
-  - `kernel.rs` (`KernelModule`): `/proc/sys/kernel/osrelease`.
-  - `uptime.rs` (`UptimeModule`): `/proc/uptime`.
-  - `packages.rs` (`PackagesModule`, `is_slow = true`): `pacman`, `dpkg`, `rpm`, `xbps`, `apk`, `emerge`, `nix`, `flatpak`, `snap`, `brew` (Linuxbrew/Bazzite) paket sayılarını toplar.
-  - `shell.rs` (`ShellModule`): `$SHELL` + sürüm bayrağı.
+  - `os.rs` (`Os`): `/etc/os-release` + mimari (`uname -m`).
+  - `os_age.rs` (`OsAge`): `libc::statx` (`STATX_BTIME`) ile kök dosya sisteminin oluşturulma zamanından sistem kurulum yaşını hesaplar.
+  - `host.rs` (`Host`): `/sys/devices/virtual/dmi/id/{sys_vendor,product_name,product_version}` + cihaz ağacı fallback.
+  - `board.rs` (`Board`): `/sys/class/dmi/id/board_{vendor,name,version}`.
+  - `kernel.rs` (`Kernel`): `/proc/sys/kernel/osrelease`.
+  - `uptime.rs` (`Uptime`): `/proc/uptime`.
+  - `packages.rs` (`PackagesModule`): `pacman`, `dpkg`, `rpm`, `xbps`, `apk`, `emerge`, `nix`, `flatpak`, `snap`, `brew` paket sayılarını toplar.
+  - `shell.rs` (`Shell`): `$SHELL` + sürüm bayrağı.
   - `desktop.rs` (`DesktopModule`): `$XDG_CURRENT_DESKTOP` / `$DESKTOP_SESSION` + Wayland/X11 protokolü.
   - `font.rs` (`FontModule`): GTK3/GTK4/gsettings/Xresources yazı tipi tespiti.
-  - `terminal.rs` (`TerminalModule`): `$TERM_PROGRAM`, `$KITTY_WINDOW_ID`, `/proc/<ppid>/comm` yürüyüşü ve `$TERM`.
-  - `cpu.rs` (`CpuModule`): `/proc/cpuinfo` model adı, çekirdek sayısı ve `/sys/devices/system/cpu` frekansı.
+  - `terminal.rs` (`Terminal`): `$TERM_PROGRAM`, `$KITTY_WINDOW_ID`, `/proc/<ppid>/comm` yürüyüşü ve `$TERM`.
+  - `cpu.rs` (`Cpu`): `/proc/cpuinfo` model adı, çekirdek sayısı ve `/sys/devices/system/cpu` frekansı.
   - `gpu.rs` (`GpuModule`): `/sys/bus/pci/devices` + `/usr/share/hwdata/pci.ids` üzerinden harici/dahili GPU tespiti.
-  - `memory.rs` (`MemoryModule`): `/proc/meminfo` + ZFS ARC (`/proc/spl/kstat/zfs/arcstats` -> `read_zfs_arc_kb` + `parse_meminfo_with_arc`) + `usage_percentage`.
-  - `swap.rs` (`SwapModule`): `/proc/meminfo` (`SwapTotal`, `SwapFree`) + `usage_percentage`.
-  - `disk.rs` (`DiskModule`): `libc::statvfs("/")` + `/proc/mounts` dosya sistemi türü + `usage_percentage`.
-  - `battery.rs` (`BatteryModule`): `/sys/class/power_supply/BAT*` kapasite ve durum + `usage_percentage`.
-  - `brightness.rs` (`BrightnessModule`): `/sys/class/backlight/*` parlaklık yüzdesi + `usage_percentage`.
-  - `cpu_usage.rs` (`CpuUsageModule`): `/proc/stat` iki örneklemeli anlık CPU kullanımı + `usage_percentage`.
-  - `temp.rs` (`TempModule`): `/sys/class/thermal` ve `/sys/class/hwmon` CPU sıcaklığı.
-  - `sound.rs` (`SoundModule`): `wpctl` / `pactl` / `amixer` ses seviyesi + `usage_percentage`.
-  - `media.rs` (`MediaModule`): `playerctl` medya bilgisi.
-  - `display.rs` (`DisplayModule`): `/sys/class/drm` EDID + çözünürlük/yenileme hızı (`xrandr`/`hyprctl`/`swaymsg` fallback).
-  - `wifi.rs` (`WifiModule`): `/sys/class/net` kablosuz arayüz + `iw` / `nmcli` (`parse_nmcli_dev_wifi` kaçışlı `:` destekli) SSID, frekans bandı ve sinyal yüzdesi.
-  - `bluetooth.rs` (`BluetoothModule`): `bluetoothctl` bağlı cihazlar ve pil yüzdesi (`parse_bluetoothctl_info_battery`).
+  - `gpu_driver.rs` (`GpuDriver`): `/proc/driver/nvidia/version` ve `/sys/class/drm/card*/device/driver` üzerinden aktif GPU çekirdek sürücüsü.
+  - `memory.rs` (`Memory`): `/proc/meminfo` + ZFS ARC.
+  - `swap.rs` (`Swap`): `/proc/meminfo` (`SwapTotal`, `SwapFree`).
+  - `disk.rs` (`Disk`): `libc::statvfs` ile `/` (composefs/Bazzite için `/sysroot` & `/var` fallback) veya özel bağlama noktası (`Disk::with_mount`, `path = "/home"`) kullanımı.
+  - `battery.rs` (`BatteryModule`): `/sys/class/power_supply/BAT*` kapasite ve durum.
+  - `power_profile.rs` (`PowerProfile`): `/sys/firmware/acpi/platform_profile` ve CPU `scaling_governor` / `energy_performance_preference` durumu.
+  - `brightness.rs` (`BrightnessModule`): `/sys/class/backlight/*` parlaklık yüzdesi.
+  - `cpu_usage.rs` (`CpuUsage`): `/proc/stat` iki örneklemeli anlık CPU kullanımı.
+  - `temp.rs` (`Temp`): `/sys/class/thermal` ve `/sys/class/hwmon` CPU sıcaklığı.
+  - `sound.rs` (`Sound`): `wpctl` / `pactl` / `amixer` ses seviyesi.
+  - `media.rs` (`Media`): `playerctl` medya bilgisi.
+  - `display.rs` (`Display`): `/sys/class/drm` EDID + çözünürlük/yenileme hızı.
+  - `wifi.rs` (`Wifi`): `/sys/class/net` kablosuz arayüz + `iw` / `nmcli` SSID, frekans bandı ve sinyal yüzdesi.
+  - `net_io.rs` (`NetIo`): `/sys/class/net/*/statistics/{rx_bytes,tx_bytes}` üzerinden aktif ağ arayüzünün toplam indirilen/yüklenen veri miktarı.
+  - `bluetooth.rs` (`BluetoothModule`): `bluetoothctl` bağlı cihazlar ve pil yüzdesi.
   - `local_ip.rs` (`LocalIpModule`): UDP soket (`8.8.8.8:80`) üzerinden yerel IPv4 adresi.
-  - `locale.rs` (`LocaleModule`): `$LC_ALL` / `$LANG` yerel ayar.
-  - `processes.rs` (`ProcessesModule`): `/proc/loadavg` veya `/proc` sayısal dizin sayımı.
-  - `init.rs` (`InitModule`): `/proc/1/comm` (`systemd`, `openrc`, `runit`, `s6`, `dinit`) + sürüm.
-  - `container.rs` (`ContainerModule`): Docker/Podman/LXC/WSL/systemd-nspawn ve QEMU/KVM/VMware/VirtualBox tespiti.
-  - `custom.rs` (`CustomModule`, `BreakModule`, `DividerModule`): Özel metin ve boşluk/ayırıcı satırları.
+  - `locale.rs` (`Locale`): `$LC_ALL` / `$LANG` yerel ayar.
+  - `processes.rs` (`Processes`): `/proc/loadavg` veya `/proc` sayısal dizin sayımı.
+  - `init.rs` (`Init`): `/proc/1/comm` (`systemd`, `openrc`, `runit`, `s6`, `dinit`) + sürüm.
+  - `container.rs` (`Container`): Docker/Podman/LXC/WSL/systemd-nspawn ve QEMU/KVM/VMware/VirtualBox tespiti.
+  - `update.rs` (`Update`): GitHub deposundan (`MehmetCanWT/rustfetch`) 6 saatlik TTL önbelleklemesiyle (`Cache::new("update")`) en yeni sürümü ve GitHub Release başlığındaki kedi cinsi kod adını (`parse_github_release_info`, `extract_codename_from_release_title`, fallback `codename_for_version`) kontrol eder; güncelleme varsa modüllerin en altında `Update available (vX.Y.Z -> vA.B.C "Codename")` satırı döndürür (`[general] check_updates = false` veya `--no-update-check` ile kapatılabilir).
+  - `custom.rs` (`Custom`) & `BreakLine`: Özel metin ve boşluk/ayırıcı satırları.
 
 ---
 
@@ -136,6 +142,7 @@ rustfetch (cli/)  ──┬──► rustfetch-core (core/)
 - **Fonksiyonlar**:
   - `pub(crate) fn resize_rgba(raw, src_w, src_h, dst_w, dst_h, filter) -> Option<Vec<u8>>`: `image.rs`, `sixel.rs` ve `color.rs` tarafından kullanılan merkezi SIMD (`fast_image_resize`) boyutlandırıcı.
   - `fit_dimensions(...)`: Hücre en-boy oranını dikkate alarak `(cols, rows)` hesaplar.
+  - `image_display_dimensions(path, target_cols, max_rows)`: Görsel başlığını okuyarak gerçek `(cols, rows)` yerleşim boyutlarını ön-hesaplar.
   - `render_ex(path, target_cols, max_rows)`: GIF ise `kitty::print_kitty_animation`, statik görsel ise `kitty::print_kitty` ile basar.
   - `render_halfblock` / `render_halfblock_ex`: 24-bit ANSI renkli `▀`/`▄` karakter dizileri üretir.
   - `render_background` / `render_background_ex`: Kitty `z_index` ve imleç kaydet/geri yükle (`\x1b7`/`\x1b8`) ile kart arkasına görsel basar.
@@ -165,20 +172,21 @@ rustfetch (cli/)  ──┬──► rustfetch-core (core/)
 ## 5. `rustfetch` (`cli/`) Detaylı Harita
 
 ### `cli/src/main.rs` & `cli/src/bin/rfetch.rs`
-- **Görevi**: İkili giriş noktaları (`rustfetch` ve `rfetch`); doğrudan `rustfetch::main()` çağırır.
+- **Görevi**: İkili giriş noktaları (`rustfetch` ve `rfetch`); doğrudan `rustfetch::run()` çağırır.
 
-### `cli/src/lib.rs`
-- **Görevi**: CLI argüman ayrıştırma (`Cli`), yapılandırma yükleme ve birleştirme, çalışma modlarını yönetme ve bilgi satırlarını toplama.
+### `cli/src/lib.rs` & `cli/src/tools.rs`
+- **Görevi**: CLI argüman ayrıştırma (`Cli`), yapılandırma yükleme ve birleştirme, çalışma modlarını yönetme, keşif/teşhis/güncelleme/TUI araçları (`tools.rs`) ve bilgi satırlarını toplama.
 - **Önemli Yapılar ve Fonksiyonlar**:
-  - `Cli` (`clap::Parser`): Tüm komut satırı bayrakları (`--config`, `--preset`, `--theme`, `--logo`, `--image`, `--ascii`, `--ascii-anim`, `--3d`, `--live`, `--json`, `--benchmark`, `--doctor`, vb.).
-  - `pub fn main()`: Yardımcı bayrakları (`--gen-config`, `--init`, `--import-fastfetch`, `--list-modules`, `--list-logos`, `--list-themes`, `--list-presets`, `--doctor`, `--clear-cache`) işler, `Config` yükler, modülleri `module_by_name` ile eşler, TTY güvenliğini kontrol eder ve uygun çalışma modunu başlatır.
-  - `run_once(...)`: Tek seferlik standart çıktı; özel ASCII (`shellexpand::tilde` ile), dağıtım logosu veya görsel (Kitty/Sixel/Halfblock) + bilgi kartını `layout::render` / `layout::render_with_image` ile basar.
+  - `Cli` (`clap::Parser`): Tüm komut satırı bayrakları (`--config`, `--preset`, `--theme`, `--logo`, `--image`, `--ascii`, `--ascii-anim`, `--3d`, `--live`, `--json`, `--benchmark`, `--no-update-check`, `--list-modules`, `--list-themes`, `--list-presets`, `--list-logos`, `--clean-cache`, `--doctor`, `--self-update`, `--setup`/`--tui`, `--install-hook`, `--uninstall-hook`, vb.).
+  - `pub fn run()`: Yardımcı bayrakları (`tools::run_*`, `--print-default-config`, `--dump-config`, `--generate-config`, `--init`, `--install-hook`, `--uninstall-hook`, `--import-fastfetch`, `--completions`) işler, `Config` yükler, modülleri `module_from_config` ile eşler (`check_updates` açıksa en alta `update` modülünü ekler), TTY güvenliğini kontrol eder ve uygun çalışma modunu başlatır.
+  - `tools.rs`: `run_list_modules`, `run_list_themes`, `run_list_presets`, `run_list_logos`, `run_clean_cache`, `run_doctor`, `run_self_update` (mevcut `config.toml`'u koruyarak GitHub Releases üzerinden günceller), `run_setup_tui` (canlı önizlemeli interaktif yapılandırma sihirbazı).
+  - `run_once(...)`: Tek seferlik standart çıktı; özel ASCII (`shellexpand::tilde` ile), dağıtım/kedi logosu veya görsel (Kitty/Sixel/Halfblock) + bilgi kartını `layout::render` / `layout::render_with_image` ile basar.
   - `TermGuard`: `run_3d` ve `run_ascii_animation` için ortak RAII terminal koruyucusu (`tcgetattr`/`tcsetattr` raw mode, `SIGINT`/`SIGTERM` sinyalleri ve imleç gizleme/gösterme).
   - `compose_animated_frame(...)`: `run_3d` ve `run_ascii_animation` için ortak dikey (stacked) ve yan yana (side-by-side) kare tamponu birleştiricisi.
-  - `run_3d(...)`: Etkileşimli/animasyonlu 3B döndürme modu; arka plan thread'inde kullanıcının yapılandırdığı modülleri (`module_by_name` ile) saniyede bir günceller.
+  - `run_3d(...)`: Etkileşimli/animasyonlu 3B döndürme modu; arka plan thread'inde kullanıcının yapılandırdığı modülleri saniyede bir günceller, herhangi bir tuş/komut/sinyal geldiğinde 3B sahneyi temizleyip aynı dağıtımın 2B statik ASCII logosuna düşer (fallback).
   - `run_ascii_animation(...)`: Çok kareli ASCII animasyon oynatıcısı (`shellexpand::tilde` destekli).
-  - `run_live(...)`: `LiveGuard` RAII koruyucusu ile alternatif ekranda (`EnterAlternateScreen`) saniyede bir yenilenen canlı sistem izleyicisi.
-  - `gather_info_lines(...)`: `detect_all_cached` sonuçlarını, özel format (`{value}`, `{bar}`), ilerleme çubuğu (`make_bar`), ikon ve tema/gradyan renkleriyle `Vec<layout::InfoLine>` listesine dönüştürür.
+  - `run_live(...)`: `LiveGuard` RAII koruyucusu ile alternatif ekranda (`EnterAlternateScreen`) saniyede bir yenilenen, mini sparkline grafikli (`render_sparkline`) ve anlık kısayollu (`t` tema, `b` kenarlık, `q` çıkış) canlı sistem izleyicisi.
+  - `gather_info_lines(...)`: `detect_all` sonuçlarını, OSC 8 tıklanabilir güncelleme bağlantısını, özel format (`{value}`), dinamik eşik renkli ilerleme çubuğu (`format_bar`), ikon ve tema/gradyan renkleriyle `Vec<layout::InfoLine>` listesine dönüştürür.
 
 ### `cli/src/layout.rs`
 - **Görevi**: ANSI kaçış dizisi farkındalıklı genişlik/kırpma/sarma, kutu çizimi, kenarlık görselleri ve terminal yerleşimi.

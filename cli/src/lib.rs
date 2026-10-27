@@ -1,20 +1,30 @@
 mod layout;
 mod logos;
+mod tools;
 
 use clap::{CommandFactory, Parser};
 use clap_complete::{generate, Shell};
 use rustfetch_core::config::Config;
-use rustfetch_core::modules::{all_modules, module_by_name};
+use rustfetch_core::modules::{all_modules, module_by_name, module_from_config};
 use rustfetch_core::{default_icon_for_module, detect_all, Module};
 use serde::Serialize;
 use std::io::Write;
 
 use layout::{color_code, InfoLine, LogoBlock};
 
+fn cli_version_string() -> &'static str {
+    static VERSION_STR: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    VERSION_STR.get_or_init(|| {
+        let ver = rustfetch_core::CURRENT_VERSION;
+        let code = rustfetch_core::codename_for_version(ver);
+        format!("{ver} \"{code}\"")
+    })
+}
+
 #[derive(Parser, Debug)]
 #[command(
     name = "rustfetch",
-    version,
+    version = cli_version_string(),
     about = "Blazing-fast system information fetch tool written in Rust"
 )]
 struct Cli {
@@ -183,6 +193,51 @@ struct Cli {
 
     #[arg(long)]
     install_hook: bool,
+
+    #[arg(long, alias = "remove-hook")]
+    uninstall_hook: bool,
+
+    #[arg(
+        long,
+        help = "Disable checking GitHub repository for RustFetch updates"
+    )]
+    no_update_check: bool,
+
+    #[arg(long, help = "List all available system information modules")]
+    list_modules: bool,
+
+    #[arg(long, help = "List all built-in color themes with previews")]
+    list_themes: bool,
+
+    #[arg(long, help = "List all layout presets")]
+    list_presets: bool,
+
+    #[arg(long, help = "List all built-in OS and cat breed mascot logos")]
+    list_logos: bool,
+
+    #[arg(long, help = "Clear cached module data (~/.cache/rustfetch)")]
+    clean_cache: bool,
+
+    #[arg(long, help = "Run system, terminal graphics, and config diagnostics")]
+    doctor: bool,
+
+    #[arg(
+        long,
+        alias = "update",
+        help = "Update RustFetch to the latest GitHub release while preserving config.toml"
+    )]
+    self_update: bool,
+
+    #[arg(
+        long,
+        alias = "tui",
+        alias = "configure",
+        help = "Launch interactive configuration wizard with live preview"
+    )]
+    setup: bool,
+
+    #[arg(long, hide = true)]
+    keep_logo: bool,
 }
 
 fn resolve_distro_logo(distro_name: &str, padding: usize) -> logos::Logo {
@@ -210,68 +265,169 @@ fn resolve_distro_logo(distro_name: &str, padding: usize) -> logos::Logo {
 fn shell_init_script(shell: &str) -> Option<&'static str> {
     match shell.to_lowercase().as_str() {
         "bash" => Some(
-            r#"# RustFetch — Automatic responsive redraw for tiling WMs (MangoWM, Hyprland, Sway, etc.)
+            r#"# RustFetch — Shell startup integration
 if [[ $- == *i* ]]; then
-    _rustfetch_last_size=""
+    _rustfetch_init_hist=""
+    _rustfetch_last_size="$(stty size 2>/dev/null)"
+    _rustfetch_prompt_cmd() {
+        if [ -z "$_rustfetch_init_hist" ]; then
+            _rustfetch_init_hist=$HISTCMD
+        elif [ "$HISTCMD" -gt "$_rustfetch_init_hist" ]; then
+            trap - WINCH
+        fi
+    }
+    PROMPT_COMMAND+=(_rustfetch_prompt_cmd)
     _rustfetch_on_resize() {
-        local cur_size
-        cur_size="$(tput cols 2>/dev/null)x$(tput lines 2>/dev/null)"
-        if [ -n "$cur_size" ] && [ "$cur_size" != "$_rustfetch_last_size" ]; then
-            _rustfetch_last_size="$cur_size"
+        if [ -z "$_rustfetch_init_hist" ] || [ "$HISTCMD" -le "$_rustfetch_init_hist" ]; then
             if [ -z "$READLINE_LINE" ]; then
-                clear
-                rustfetch
+                local cur_size
+                while :; do
+                    cur_size="$(stty size 2>/dev/null)"
+                    if [ -z "$cur_size" ] || [ "$cur_size" = "$_rustfetch_last_size" ]; then
+                        break
+                    fi
+                    _rustfetch_last_size="$cur_size"
+                    rustfetch --keep-logo --no-update-check
+                done
+                local _rf_ps1="${PS1@P}"
+                printf '%s' "${_rf_ps1//[$'\001\002']/}"
             fi
+        else
+            trap - WINCH
         fi
     }
     trap '_rustfetch_on_resize' WINCH
-    _rustfetch_last_size="$(tput cols 2>/dev/null)x$(tput lines 2>/dev/null)"
     rustfetch
 fi
 "#,
         ),
         "zsh" => Some(
-            r#"# RustFetch — Automatic responsive redraw for tiling WMs (MangoWM, Hyprland, Sway, etc.)
+            r#"# RustFetch — Shell startup integration
 if [[ -o interactive ]]; then
-    _rustfetch_last_size=""
+    _rustfetch_startup=1
+    _rustfetch_last_size="$(stty size 2>/dev/null)"
+    _rustfetch_preexec() {
+        _rustfetch_startup=0
+    }
+    autoload -Uz add-zsh-hook 2>/dev/null && add-zsh-hook preexec _rustfetch_preexec 2>/dev/null
     TRAPWINCH() {
-        local cur_size="${COLUMNS}x${LINES}"
-        if [[ -n "$cur_size" && "$cur_size" != "$_rustfetch_last_size" ]]; then
-            _rustfetch_last_size="$cur_size"
-            if [[ -z "$BUFFER" ]]; then
-                clear
-                rustfetch
-                zle && zle reset-prompt 2>/dev/null
-            fi
+        if [[ "$_rustfetch_startup" == "1" && -z "$BUFFER" ]]; then
+            local cur_size
+            while true; do
+                cur_size="$(stty size 2>/dev/null)"
+                if [[ -z "$cur_size" || "$cur_size" == "$_rustfetch_last_size" ]]; then
+                    break
+                fi
+                _rustfetch_last_size="$cur_size"
+                rustfetch --keep-logo --no-update-check
+            done
+            zle && zle reset-prompt 2>/dev/null
         fi
     }
-    _rustfetch_last_size="${COLUMNS}x${LINES}"
     rustfetch
 fi
 "#,
         ),
         "fish" => Some(
-            r#"# RustFetch — Automatic responsive redraw for tiling WMs (MangoWM, Hyprland, Sway, etc.)
+            r#"# RustFetch — Shell startup integration
 if status is-interactive
-    set -g _rustfetch_last_size ""
+    set -g _rustfetch_startup 1
+    set -g _rustfetch_last_size (stty size 2>/dev/null)
+    function _rustfetch_preexec --on-event fish_preexec
+        set -g _rustfetch_startup 0
+    end
     function _rustfetch_on_resize --on-signal WINCH
-        set -l cur_size (tput cols 2>/dev/null)x(tput lines 2>/dev/null)
-        if test -n "$cur_size" -a "$cur_size" != "$_rustfetch_last_size"
-            set -g _rustfetch_last_size "$cur_size"
-            if test -z (commandline)
-                clear
-                rustfetch
+        if test "$_rustfetch_startup" = "1" -a -z (commandline)
+            set -l cur_size (stty size 2>/dev/null)
+            if test -n "$cur_size" -a "$cur_size" != "$_rustfetch_last_size"
+                set -g _rustfetch_last_size "$cur_size"
+                rustfetch --keep-logo --no-update-check
                 commandline -f repaint 2>/dev/null
             end
         end
     end
-    set -g _rustfetch_last_size (tput cols 2>/dev/null)x(tput lines 2>/dev/null)
     rustfetch
 end
 "#,
         ),
         _ => None,
     }
+}
+
+fn get_shell_target_file(home: &std::path::Path) -> (&'static str, std::path::PathBuf) {
+    let shell_path = std::env::var("SHELL").unwrap_or_default();
+    let is_zsh = shell_path.ends_with("/zsh") || shell_path == "zsh";
+    let is_fish = shell_path.ends_with("/fish") || shell_path == "fish";
+
+    if is_zsh {
+        ("zsh", home.join(".zshrc"))
+    } else if is_fish {
+        ("fish", home.join(".config/fish/config.fish"))
+    } else {
+        ("bash", home.join(".bashrc"))
+    }
+}
+
+pub(crate) fn strip_rustfetch_hook(content: &str) -> String {
+    let mut result = Vec::new();
+    let mut in_rustfetch_block = false;
+    let mut block_depth = 0;
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+
+        if trimmed.starts_with("# RustFetch") {
+            in_rustfetch_block = true;
+            block_depth = 0;
+            continue;
+        }
+
+        if in_rustfetch_block {
+            if trimmed.starts_with("if ") || trimmed.starts_with("function ") {
+                block_depth += 1;
+            }
+            if trimmed == "fi"
+                || trimmed == "end"
+                || (block_depth > 0 && trimmed.ends_with("; fi"))
+            {
+                if block_depth > 0 {
+                    block_depth -= 1;
+                }
+                if block_depth == 0 {
+                    in_rustfetch_block = false;
+                    continue;
+                }
+            }
+            continue;
+        }
+
+        if trimmed.contains("_rustfetch")
+            || trimmed.contains("TRAPWINCH")
+            || trimmed == "rustfetch"
+            || trimmed == "rfetch"
+        {
+            continue;
+        }
+
+        result.push(line);
+    }
+
+    let mut cleaned_lines = Vec::new();
+    let mut prev_empty = false;
+    for line in result {
+        let is_empty = line.trim().is_empty();
+        if is_empty && prev_empty {
+            continue;
+        }
+        cleaned_lines.push(line);
+        prev_empty = is_empty;
+    }
+
+    let mut output = cleaned_lines.join("\n");
+    if !output.is_empty() && !output.ends_with('\n') {
+        output.push('\n');
+    }
+    output
 }
 
 fn install_shell_hook() {
@@ -283,17 +439,7 @@ fn install_shell_hook() {
         }
     };
 
-    let shell_path = std::env::var("SHELL").unwrap_or_default();
-    let is_zsh = shell_path.ends_with("/zsh") || shell_path == "zsh";
-    let is_fish = shell_path.ends_with("/fish") || shell_path == "fish";
-
-    let (shell_name, target_file) = if is_zsh {
-        ("zsh", home.join(".zshrc"))
-    } else if is_fish {
-        ("fish", home.join(".config/fish/config.fish"))
-    } else {
-        ("bash", home.join(".bashrc"))
-    };
+    let (shell_name, target_file) = get_shell_target_file(&home);
 
     let script = match shell_init_script(shell_name) {
         Some(s) => s,
@@ -301,23 +447,12 @@ fn install_shell_hook() {
     };
 
     let existing = std::fs::read_to_string(&target_file).unwrap_or_default();
-    if existing.contains("_rustfetch_on_resize") || existing.contains("TRAPWINCH() {") {
-        println!(
-            "RustFetch responsive hook is already installed in {}",
-            target_file.display()
-        );
-        return;
-    }
+    let cleaned = strip_rustfetch_hook(&existing);
 
-    let cleaned: Vec<&str> = existing
-        .lines()
-        .filter(|line| line.trim() != "rustfetch" && line.trim() != "rfetch")
-        .collect();
-    let mut new_content = cleaned.join("\n");
+    let mut new_content = cleaned;
     if !new_content.is_empty() && !new_content.ends_with('\n') {
         new_content.push('\n');
     }
-    new_content.push('\n');
     new_content.push_str(script);
 
     if let Some(parent) = target_file.parent() {
@@ -326,7 +461,34 @@ fn install_shell_hook() {
 
     match std::fs::write(&target_file, new_content) {
         Ok(()) => println!(
-            "Successfully installed RustFetch responsive hook to {}",
+            "Successfully installed RustFetch startup hook to {}",
+            target_file.display()
+        ),
+        Err(e) => eprintln!("Failed to write to {}: {e}", target_file.display()),
+    }
+}
+
+fn uninstall_shell_hook() {
+    let home = match std::env::var("HOME") {
+        Ok(h) => std::path::PathBuf::from(h),
+        Err(_) => {
+            eprintln!("Error: HOME environment variable not set.");
+            return;
+        }
+    };
+
+    let (_, target_file) = get_shell_target_file(&home);
+    if !target_file.exists() {
+        println!("No shell configuration found at {}", target_file.display());
+        return;
+    }
+
+    let existing = std::fs::read_to_string(&target_file).unwrap_or_default();
+    let cleaned = strip_rustfetch_hook(&existing);
+
+    match std::fs::write(&target_file, cleaned) {
+        Ok(()) => println!(
+            "Successfully removed RustFetch hook from {}",
             target_file.display()
         ),
         Err(e) => eprintln!("Failed to write to {}: {e}", target_file.display()),
@@ -334,6 +496,10 @@ fn install_shell_hook() {
 }
 
 pub fn run() {
+    #[cfg(unix)]
+    unsafe {
+        libc::signal(libc::SIGPIPE, libc::SIG_DFL);
+    }
     let cli = Cli::parse();
 
     if let Some(shell) = &cli.init {
@@ -352,6 +518,11 @@ pub fn run() {
         return;
     }
 
+    if cli.uninstall_hook {
+        uninstall_shell_hook();
+        return;
+    }
+
     if cli.print_default_config || cli.dump_config {
         print!("{}", Config::to_default_toml());
         return;
@@ -361,6 +532,9 @@ pub fn run() {
         let path = Config::config_path();
         if let Some(parent) = path.parent() {
             let _ = std::fs::create_dir_all(parent);
+        }
+        if let Some(bak) = Config::backup_if_exists(&path) {
+            println!("Backed up existing configuration to {}", bak.display());
         }
         let default_toml = Config::to_default_toml();
         match std::fs::write(&path, &default_toml) {
@@ -379,6 +553,9 @@ pub fn run() {
                         Ok(toml_str) => {
                             if let Some(parent) = path.parent() {
                                 let _ = std::fs::create_dir_all(parent);
+                            }
+                            if let Some(bak) = Config::backup_if_exists(&path) {
+                                println!("Backed up existing configuration to {}", bak.display());
                             }
                             match std::fs::write(&path, &toml_str) {
                                 Ok(()) => println!(
@@ -409,6 +586,46 @@ pub fn run() {
     if let Some(shell) = cli.completions {
         let mut cmd = Cli::command();
         generate(shell, &mut cmd, "rustfetch", &mut std::io::stdout());
+        return;
+    }
+
+    if cli.list_modules {
+        tools::run_list_modules();
+        return;
+    }
+
+    if cli.list_themes {
+        tools::run_list_themes();
+        return;
+    }
+
+    if cli.list_presets {
+        tools::run_list_presets();
+        return;
+    }
+
+    if cli.list_logos {
+        tools::run_list_logos();
+        return;
+    }
+
+    if cli.clean_cache {
+        tools::run_clean_cache();
+        return;
+    }
+
+    if cli.doctor {
+        tools::run_doctor();
+        return;
+    }
+
+    if cli.self_update {
+        tools::run_self_update();
+        return;
+    }
+
+    if cli.setup {
+        tools::run_setup_tui();
         return;
     }
 
@@ -508,7 +725,7 @@ pub fn run() {
         }
     }
 
-    let (modules, configs): (
+    let (mut modules, mut configs): (
         Vec<Box<dyn Module>>,
         Vec<rustfetch_core::config::ModuleConfig>,
     ) = if config.modules.is_empty() {
@@ -522,9 +739,31 @@ pub fn run() {
         config
             .modules
             .iter()
-            .filter_map(|mc| module_by_name(&mc.name).map(|m| (m, mc.clone())))
+            .filter_map(|mc| module_from_config(mc).map(|m| (m, mc.clone())))
             .unzip()
     };
+
+    if cli.no_update_check {
+        config.general.check_updates = false;
+    }
+
+    if !config.general.check_updates {
+        let mut filtered_mods = Vec::with_capacity(modules.len());
+        let mut filtered_cfgs = Vec::with_capacity(configs.len());
+        for (m, c) in modules.into_iter().zip(configs.into_iter()) {
+            if c.name != "update" {
+                filtered_mods.push(m);
+                filtered_cfgs.push(c);
+            }
+        }
+        modules = filtered_mods;
+        configs = filtered_cfgs;
+    } else if !configs.iter().any(|mc| mc.name == "update") {
+        if let Some(m) = module_by_name("update") {
+            modules.push(m);
+            configs.push(rustfetch_core::config::ModuleConfig::new("update"));
+        }
+    }
 
     use std::io::IsTerminal;
 
@@ -545,9 +784,9 @@ pub fn run() {
 
     let is_anim_requested = cli.ascii_anim.is_some() || config.general.logo.animation.enabled;
 
-    let is_3d = is_3d_requested && is_interactive && !is_dumb;
-    let is_anim = is_anim_requested && is_interactive && !is_dumb;
-    let is_live = (cli.live || config.general.live) && is_interactive && !is_dumb;
+    let is_3d = is_3d_requested && is_interactive && !is_dumb && !cli.keep_logo;
+    let is_anim = is_anim_requested && is_interactive && !is_dumb && !cli.keep_logo;
+    let is_live = (cli.live || config.general.live) && is_interactive && !is_dumb && !cli.keep_logo;
 
     if cli.benchmark {
         run_benchmark(&modules);
@@ -595,12 +834,60 @@ fn run_once(
     modules: &[Box<dyn Module>],
     configs: &[rustfetch_core::config::ModuleConfig],
 ) {
+    let max_attempts = if cli.keep_logo { 4 } else { 1 };
+    for _ in 0..max_attempts {
+        if cli.keep_logo {
+            let start = std::time::Instant::now();
+            let mut last_size = layout::terminal_size();
+            let mut stable_ms = 0u64;
+            while stable_ms < 45 && start.elapsed() < std::time::Duration::from_millis(300) {
+                std::thread::sleep(std::time::Duration::from_millis(15));
+                let cur = layout::terminal_size();
+                if cur == last_size {
+                    stable_ms += 15;
+                } else {
+                    last_size = cur;
+                    stable_ms = 0;
+                }
+            }
+        }
+        let size_before = layout::terminal_size();
+        run_once_inner(config, cli, modules, configs);
+        if !cli.keep_logo || layout::terminal_size() == size_before {
+            break;
+        }
+    }
+}
+
+fn begin_keep_logo_frame(keep_logo: bool) {
+    if keep_logo && layout::colors_enabled() {
+        print!("\x1b[?2026h");
+        if terminal_supports_kitty() {
+            print!("\x1b_Ga=d,d=a\x1b\\");
+        }
+        print!("\x1b[2J\x1b[3J\x1b[H");
+    }
+}
+
+fn end_keep_logo_frame(keep_logo: bool) {
+    if keep_logo && layout::colors_enabled() {
+        print!("\x1b[?2026l");
+        let _ = std::io::stdout().flush();
+    }
+}
+
+fn run_once_inner(
+    config: &Config,
+    cli: &Cli,
+    modules: &[Box<dyn Module>],
+    configs: &[rustfetch_core::config::ModuleConfig],
+) {
     let _wrap_guard = LineWrapGuard::new();
     if (cli.clear || config.general.clear_screen.unwrap_or(false)) && layout::colors_enabled() {
         print!("\x1b[2J\x1b[3J\x1b[H");
         let _ = std::io::stdout().flush();
     }
-    if !cli.no_logo && terminal_supports_kitty() {
+    if !cli.no_logo && !cli.keep_logo && terminal_supports_kitty() {
         rustfetch_render::clear_kitty_images();
     }
     let mut resolved_image_path = None;
@@ -612,8 +899,13 @@ fn run_once(
         .as_deref()
         .or(config.general.logo.ascii_path.as_deref());
 
+    let is_3d_requested = cli.three_d
+        || config.general.logo.three_d.enabled
+        || config.general.three_d.unwrap_or(false);
+
     let show_logo = config.general.logo.enabled && !cli.no_logo;
-    if (custom_ascii_path.is_none() || cli.image.is_some())
+    if (!is_3d_requested || cli.image.is_some())
+        && (custom_ascii_path.is_none() || cli.image.is_some())
         && (show_logo || config.general.logo.auto_color || config.general.colors.image_palette)
     {
         if config.general.logo.random_image && cli.image.is_none() {
@@ -623,8 +915,8 @@ fn run_once(
                 .image_dir
                 .as_deref()
                 .unwrap_or("~/.config/rustfetch/logos");
-            resolved_image_path =
-                pick_random_image(dir).or_else(|| pick_random_image("~/.config/fastfetch/logos"));
+            resolved_image_path = pick_random_image(dir, cli.keep_logo)
+                .or_else(|| pick_random_image("~/.config/fastfetch/logos", cli.keep_logo));
         }
         if resolved_image_path.is_none() {
             resolved_image_path = config.general.logo.image_path.clone();
@@ -633,10 +925,13 @@ fn run_once(
         if let Some(img_path) = &resolved_image_path {
             let expanded_img = shellexpand::tilde(img_path).to_string();
             resolved_image_path = Some(expanded_img.clone());
-            dynamic_color = get_image_color(&expanded_img, config.general.logo.auto_color);
-            if config.general.colors.image_palette {
-                image_palette = rustfetch_render::extract_color_palette(&expanded_img, 16);
-            }
+            let (dom, pal) = get_image_color_and_palette(
+                &expanded_img,
+                config.general.logo.auto_color,
+                config.general.colors.image_palette,
+            );
+            dynamic_color = dom;
+            image_palette = pal;
         }
     }
 
@@ -703,57 +998,9 @@ fn run_once(
     };
 
     let (logo_block, distro_color) = if show_logo && resolved_image_path.is_none() {
-        let custom_block = custom_ascii_path
-            .and_then(|ascii_p| {
-                let expanded = shellexpand::tilde(ascii_p);
-                std::fs::read_to_string(expanded.as_ref()).ok()
-            })
-            .filter(|raw| !raw.is_empty())
-            .map(|mut processed| {
-                if let Some(colors) = &config.general.logo.colors {
-                    let codes: Vec<String> = colors.iter().map(|c| layout::color_code(c)).collect();
-                    let refs: Vec<&str> = codes.iter().map(|s| s.as_str()).collect();
-                    processed = rustfetch_core::apply_neofetch_colors(&processed, &refs);
-                }
-                let lines: Vec<String> = processed.lines().map(|s| s.to_string()).collect();
-                let width = lines
-                    .iter()
-                    .map(|l| layout::strip_ansi_width(l))
-                    .max()
-                    .unwrap_or(0);
-                (Some(LogoBlock { lines, width }), None)
-            });
-
-        custom_block.unwrap_or_else(|| {
-            let distro_name = if config.general.logo.distro == "auto" {
-                detect_distro_name()
-            } else {
-                config.general.logo.distro.clone()
-            };
-            let logo = resolve_distro_logo(&distro_name, config.general.padding);
-            let logo_colors = config.general.logo.colors.as_ref().map(|colors| {
-                colors
-                    .iter()
-                    .map(|c| layout::color_code(c))
-                    .collect::<Vec<String>>()
-            });
-            let colored_lines = if let Some(colors) = &logo_colors {
-                let refs: Vec<&str> = colors.iter().map(|s| s.as_str()).collect();
-                logo.colored_lines_with_custom(None, Some(&refs))
-            } else if let Some(ref dc) = dynamic_color {
-                let dc_code = layout::color_code(dc);
-                logo.colored_lines_with_custom(Some(&dc_code), None)
-            } else {
-                logo.colored_lines()
-            };
-            (
-                Some(LogoBlock {
-                    lines: colored_lines,
-                    width: logo.width,
-                }),
-                Some(logo.color),
-            )
-        })
+        let (block, color) =
+            build_ascii_logo_block(config, custom_ascii_path, None, dynamic_color.as_deref());
+        (Some(block), color)
     } else {
         (None, None)
     };
@@ -845,11 +1092,26 @@ fn run_once(
                 0
             });
         let max_modules = max_allowed_rows.saturating_sub(overhead).max(3);
-        info_lines.truncate(max_modules);
+        if info_lines.len() > max_modules {
+            let preserve_update = info_lines
+                .last()
+                .is_some_and(|l| l.value.starts_with("Update available"));
+            if preserve_update {
+                let update_line = info_lines.pop();
+                info_lines.truncate(max_modules.saturating_sub(1));
+                if let Some(u) = update_line {
+                    info_lines.push(u);
+                }
+            } else {
+                info_lines.truncate(max_modules);
+            }
+        }
     }
 
     if is_compact_term && cli.image.is_none() && cli.ascii.is_none() {
+        begin_keep_logo_frame(cli.keep_logo);
         layout::render(None, &info_lines, &render_opts);
+        end_keep_logo_frame(cli.keep_logo);
         return;
     }
 
@@ -892,14 +1154,8 @@ fn run_once(
                             .min(term_cols.saturating_sub(pad_val * 2 + 2))
                             .max(min_image_w);
                     }
-                } else {
-                    let total_needed = target_cols + needed_right_w;
-                    if total_needed > avail_for_both {
-                        let card_allocated = needed_right_w
-                            .clamp(min_card_w, avail_for_both.saturating_sub(min_image_w));
-                        let max_img_avail = avail_for_both.saturating_sub(card_allocated);
-                        target_cols = config_img_w.min(max_img_avail).max(min_image_w);
-                    }
+                } else if target_cols + min_card_w > avail_for_both {
+                    target_cols = avail_for_both.saturating_sub(min_card_w).max(min_image_w);
                 }
             } else if effective_logo_pos == "top" || effective_logo_pos == "bottom" {
                 target_cols = config_img_w
@@ -909,12 +1165,20 @@ fn run_once(
 
             render_opts.logo_position = effective_logo_pos;
 
+            let card_rows = info_lines.len()
+                + if header.is_some() { 2 } else { 0 }
+                + if render_opts.palette_lines.is_some() { 2 } else { 0 }
+                + if config.general.border { 2 } else { 0 };
+            let default_max_rows = if effective_logo_pos == "top" || effective_logo_pos == "bottom"
+            {
+                (term_rows / 2).clamp(8, 18)
+            } else {
+                card_rows.clamp(16, 23).min(term_rows.saturating_sub(3).max(6))
+            };
             let max_image_rows = Some(
-                if effective_logo_pos == "top" || effective_logo_pos == "bottom" {
-                    (term_rows.saturating_sub(info_lines.len() + 4) / 2).clamp(4, 16)
-                } else {
-                    max_allowed_rows.min(28)
-                },
+                cli.height
+                    .unwrap_or(default_max_rows)
+                    .min(term_rows.saturating_sub(2).max(1)),
             );
 
             if cli.live {
@@ -942,24 +1206,35 @@ fn run_once(
                     .max(target_cols)
                     .min(term_cols.saturating_sub(pad_val * 2 + 1));
                 let card_h = (info_lines.len() + 4).min(max_allowed_rows);
+                begin_keep_logo_frame(cli.keep_logo);
                 let _ = rustfetch_render::render_background(image_path, card_w, card_h, -1);
                 layout::render(None, &info_lines, &render_opts);
+                end_keep_logo_frame(cli.keep_logo);
                 return;
             }
+
+            let (est_cols, est_rows) = rustfetch_render::image_display_dimensions(
+                image_path,
+                target_cols,
+                max_image_rows,
+            )
+            .unwrap_or((target_cols, max_image_rows.unwrap_or(20)));
 
             let bounded_card_w = if effective_logo_pos == "top" || effective_logo_pos == "bottom" {
                 needed_right_w.min(term_cols.saturating_sub(pad_val * 2 + 1))
             } else {
                 needed_right_w
-                    .min(term_cols.saturating_sub(target_cols + layout::LOGO_GAP + pad_val * 2 + 1))
+                    .min(term_cols.saturating_sub(est_cols + layout::LOGO_GAP + pad_val * 2 + 1))
             };
+
+            let reserve_rows = est_rows.max(card_rows).min(term_rows.saturating_sub(1));
 
             if use_kitty {
                 let total_fetch_w = if effective_logo_pos == "top" || effective_logo_pos == "bottom"
                 {
-                    target_cols.max(bounded_card_w)
+                    est_cols.max(bounded_card_w)
                 } else {
-                    target_cols + layout::LOGO_GAP + bounded_card_w
+                    est_cols + layout::LOGO_GAP + bounded_card_w
                 };
                 let h_pad = layout::compute_h_pad(
                     total_fetch_w,
@@ -967,14 +1242,20 @@ fn run_once(
                     config.general.center,
                 );
 
-                if h_pad > 0 {
-                    print!("{}", " ".repeat(h_pad));
-                    let _ = std::io::stdout().flush();
-                }
+                let pre_scroll = if effective_logo_pos == "top" || effective_logo_pos == "bottom" {
+                    0
+                } else {
+                    reserve_rows
+                };
 
-                if let Some((actual_cols, actual_lines)) =
-                    rustfetch_render::render_image_ex(image_path, target_cols, max_image_rows)
-                {
+                if let Some((actual_cols, actual_lines)) = rustfetch_render::render_image_positioned(
+                    image_path,
+                    target_cols,
+                    max_image_rows,
+                    pre_scroll,
+                    h_pad,
+                    cli.keep_logo,
+                ) {
                     layout::render_with_image(
                         actual_lines,
                         actual_cols,
@@ -982,20 +1263,33 @@ fn run_once(
                         &info_lines,
                         &render_opts,
                     );
+                    print!("\x1b[?2026l");
+                    let _ = std::io::stdout().flush();
+                    return;
+                }
+                if cli.keep_logo {
                     return;
                 }
             } else if use_sixel {
                 let total_fetch_w = if effective_logo_pos == "top" || effective_logo_pos == "bottom"
                 {
-                    target_cols.max(bounded_card_w)
+                    est_cols.max(bounded_card_w)
                 } else {
-                    target_cols + layout::LOGO_GAP + bounded_card_w
+                    est_cols + layout::LOGO_GAP + bounded_card_w
                 };
                 let h_pad = layout::compute_h_pad(
                     total_fetch_w,
                     config.general.padding,
                     config.general.center,
                 );
+
+                begin_keep_logo_frame(cli.keep_logo);
+                if effective_logo_pos != "top"
+                    && effective_logo_pos != "bottom"
+                    && reserve_rows > 1
+                {
+                    print!("{}\x1b[{}A\r", "\n".repeat(reserve_rows - 1), reserve_rows - 1);
+                }
 
                 if h_pad > 0 {
                     print!("{}", " ".repeat(h_pad));
@@ -1012,8 +1306,10 @@ fn run_once(
                         &info_lines,
                         &render_opts,
                     );
+                    end_keep_logo_frame(cli.keep_logo);
                     return;
                 }
+                end_keep_logo_frame(cli.keep_logo);
             }
 
             if let Some(lines) =
@@ -1024,13 +1320,17 @@ fn run_once(
                     .map(|l| layout::strip_ansi_width(l))
                     .unwrap_or(target_cols);
                 let logo_block = LogoBlock { lines, width: w };
+                begin_keep_logo_frame(cli.keep_logo);
                 layout::render(Some(&logo_block), &info_lines, &render_opts);
+                end_keep_logo_frame(cli.keep_logo);
                 return;
             }
         }
     }
 
+    begin_keep_logo_frame(cli.keep_logo);
     layout::render(logo_block.as_ref(), &info_lines, &render_opts);
+    end_keep_logo_frame(cli.keep_logo);
 }
 
 #[derive(Serialize)]
@@ -1132,7 +1432,49 @@ fn extract_percentage(val: &str) -> Option<u8> {
         }
     }
 
+    if let Some(pos) = val.find("°C") {
+        let prefix = &val[..pos];
+        let num_str: String = prefix
+            .chars()
+            .rev()
+            .take_while(|c| c.is_ascii_digit() || *c == '.')
+            .collect();
+        let num_str: String = num_str.chars().rev().collect();
+        if let Ok(temp_c) = num_str.parse::<f64>() {
+            return Some((temp_c.round() as u8).min(100));
+        }
+    }
+
     None
+}
+
+pub fn render_sparkline(samples: &[u8], colored: bool) -> String {
+    const TICKS: [char; 8] = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
+    if samples.is_empty() {
+        return String::new();
+    }
+    let mut out = String::with_capacity(samples.len() * 16);
+    for &pct in samples {
+        let clamped = pct.min(100);
+        let idx = ((clamped as usize) * 7) / 100;
+        if colored {
+            let col = if clamped < 60 {
+                "\x1b[38;2;102;217;160m"
+            } else if clamped < 85 {
+                "\x1b[38;2;249;175;79m"
+            } else {
+                "\x1b[38;2;243;139;168m"
+            };
+            out.push_str(col);
+            out.push(TICKS[idx]);
+        } else {
+            out.push(TICKS[idx]);
+        }
+    }
+    if colored {
+        out.push_str("\x1b[0m");
+    }
+    out
 }
 
 fn format_bar(percent: u8, width: usize, colored: bool, invert_color: bool) -> String {
@@ -1145,26 +1487,29 @@ fn format_bar(percent: u8, width: usize, colored: bool, invert_color: bool) -> S
         ""
     } else if !invert_color {
         if percent < 60 {
-            "\x1b[32m"
+            "\x1b[38;2;102;217;160m"
         } else if percent < 85 {
-            "\x1b[33m"
+            "\x1b[38;2;249;175;79m"
         } else {
-            "\x1b[31m"
+            "\x1b[38;2;243;139;168m"
         }
     } else if percent < 20 {
-        "\x1b[31m"
+        "\x1b[38;2;243;139;168m"
     } else if percent < 50 {
-        "\x1b[33m"
+        "\x1b[38;2;249;175;79m"
     } else {
-        "\x1b[32m"
+        "\x1b[38;2;102;217;160m"
     };
 
+    let dim_track = if colored { "\x1b[38;2;108;112;134m" } else { "" };
     let reset = if colored { "\x1b[0m" } else { "" };
     format!(
-        "{}[{}{}]",
+        "{}[{}{}{}{}]",
         color_code,
         "■".repeat(elapsed),
-        "-".repeat(remaining)
+        dim_track,
+        "-".repeat(remaining),
+        color_code
     ) + reset
 }
 
@@ -1176,7 +1521,7 @@ fn gather_info_lines(
     distro_color: Option<&str>,
 ) -> Vec<InfoLine> {
     let results = detect_all(modules);
-    results
+    let collected: Vec<(InfoLine, bool)> = results
         .into_iter()
         .zip(configs.iter())
         .filter_map(|(result, mc)| {
@@ -1191,12 +1536,15 @@ fn gather_info_lines(
                 } else {
                     "---DIVIDER---".to_string()
                 };
-                return Some(InfoLine {
-                    label,
-                    value: String::new(),
-                    icon: None,
-                    color: String::new(),
-                });
+                return Some((
+                    InfoLine {
+                        label,
+                        value: String::new(),
+                        icon: None,
+                        color: String::new(),
+                    },
+                    false,
+                ));
             }
 
             let info = result?;
@@ -1214,6 +1562,12 @@ fn gather_info_lines(
 
             if let Some(fmt) = &mc.format {
                 value = fmt.replace("{value}", &value).replace("{}", &value);
+            }
+
+            if mc.name == "update" && layout::colors_enabled() {
+                value = format!(
+                    "\x1b]8;;https://github.com/MehmetCanWT/rustfetch/releases/latest\x07{value}\x1b]8;;\x07"
+                );
             }
 
             let icon = if config.general.icons {
@@ -1251,20 +1605,63 @@ fn gather_info_lines(
                 .as_deref()
                 .and_then(rustfetch_render::get_theme)
                 .map(|t| format!("#{:02x}{:02x}{:02x}", t.primary.0, t.primary.1, t.primary.2));
+            let has_explicit_color = mc.color.is_some() || mc.name == "update";
             let color_str = mc
                 .color
                 .as_deref()
+                .or(if mc.name == "update" {
+                    Some("bright_yellow")
+                } else {
+                    None
+                })
                 .or(dynamic_color)
                 .or(theme_color.as_deref())
                 .or(distro_color)
                 .unwrap_or("blue");
             let color = color_code(color_str);
-            Some(InfoLine {
-                label,
-                value,
-                icon,
-                color,
-            })
+            Some((
+                InfoLine {
+                    label,
+                    value,
+                    icon,
+                    color,
+                },
+                has_explicit_color,
+            ))
+        })
+        .collect();
+
+    let grad_rgb: Vec<(u8, u8, u8)> = config
+        .general
+        .gradient
+        .as_ref()
+        .map(|list| {
+            list.iter()
+                .filter_map(|s| rustfetch_render::parse_color(s))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let grad_target_count = collected
+        .iter()
+        .filter(|(line, explicit)| !explicit && !line.label.starts_with("---DIVIDER"))
+        .count();
+
+    let mut grad_idx = 0usize;
+    collected
+        .into_iter()
+        .map(|(mut line, explicit)| {
+            if !grad_rgb.is_empty() && !explicit && !line.label.starts_with("---DIVIDER") {
+                let t = if grad_target_count <= 1 {
+                    0.0
+                } else {
+                    grad_idx as f32 / (grad_target_count - 1) as f32
+                };
+                grad_idx += 1;
+                let (r, g, b) = rustfetch_render::interpolate_gradient(&grad_rgb, t);
+                line.color = color_code(&format!("#{:02x}{:02x}{:02x}", r, g, b));
+            }
+            line
         })
         .collect()
 }
@@ -1274,21 +1671,11 @@ fn build_right_lines(info_lines: &[InfoLine], opts: &layout::RenderOptions) -> V
 }
 
 #[cfg(unix)]
-static mut ORIG_TERMIOS: Option<libc::termios> = None;
+static SIGINT_RECEIVED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 #[cfg(unix)]
 extern "C" fn handle_sigint(_: libc::c_int) {
-    unsafe {
-        if let Some(ref orig) = ORIG_TERMIOS {
-            libc::tcsetattr(libc::STDIN_FILENO, libc::TCSANOW, orig);
-        }
-        libc::write(
-            libc::STDOUT_FILENO,
-            b"\x1b[?1002l\x1b[?1006l\x1b[?25h\n".as_ptr() as *const _,
-            23,
-        );
-        libc::_exit(0);
-    }
+    SIGINT_RECEIVED.store(true, std::sync::atomic::Ordering::SeqCst);
 }
 
 struct TermGuard {
@@ -1304,13 +1691,14 @@ impl TermGuard {
             terminal::{Clear, ClearType},
         };
         #[cfg(unix)]
+        SIGINT_RECEIVED.store(false, std::sync::atomic::Ordering::SeqCst);
+        #[cfg(unix)]
         let mut orig_termios = None;
         #[cfg(unix)]
         unsafe {
             let mut orig: libc::termios = std::mem::zeroed();
             if libc::tcgetattr(libc::STDIN_FILENO, &mut orig) == 0 {
                 orig_termios = Some(orig);
-                ORIG_TERMIOS = Some(orig);
                 let mut raw = orig;
                 // Retain ISIG so Ctrl+C sends SIGINT natively without buffering
                 raw.c_lflag &= !(libc::ICANON | libc::ECHO);
@@ -1369,8 +1757,24 @@ fn compose_animated_frame(
     (term_cols, term_rows): (usize, usize),
 ) -> String {
     let layout_stacked = term_cols < left_width + layout::LOGO_GAP + right_width;
+    let max_w = term_cols.saturating_sub(1).max(1);
+    let max_r = term_rows.saturating_sub(1).max(1);
+    let mut rows_written = 0usize;
     let mut frame_buf = String::with_capacity(term_cols * term_rows * 4 + 64);
     frame_buf.push_str("\x1b[H");
+
+    let push_bounded = |buf: &mut String, row: String, rows_written: &mut usize| {
+        if *rows_written >= max_r {
+            return;
+        }
+        if layout::strip_ansi_width(&row) > max_w {
+            buf.push_str(&layout::truncate_ansi(&row, max_w));
+        } else {
+            buf.push_str(&row);
+        }
+        buf.push_str("\x1b[K\r\n");
+        *rows_written += 1;
+    };
 
     if layout_stacked {
         let left_pad = if config.general.center {
@@ -1379,20 +1783,16 @@ fn compose_animated_frame(
             " ".repeat(config.general.padding)
         };
         for line in left_lines {
-            frame_buf.push_str(&left_pad);
-            frame_buf.push_str(line);
-            frame_buf.push_str("\x1b[K\r\n");
+            push_bounded(&mut frame_buf, format!("{left_pad}{line}"), &mut rows_written);
         }
-        frame_buf.push_str("\x1b[K\r\n");
+        push_bounded(&mut frame_buf, String::new(), &mut rows_written);
         let info_pad = if config.general.center {
             " ".repeat(term_cols.saturating_sub(right_width) / 2)
         } else {
             " ".repeat(config.general.padding)
         };
         for line in right_lines {
-            frame_buf.push_str(&info_pad);
-            frame_buf.push_str(line);
-            frame_buf.push_str("\x1b[K\r\n");
+            push_bounded(&mut frame_buf, format!("{info_pad}{line}"), &mut rows_written);
         }
     } else {
         let total_content_w = left_width + layout::LOGO_GAP + right_width;
@@ -1405,25 +1805,27 @@ fn compose_animated_frame(
         let gap = " ".repeat(layout::LOGO_GAP);
 
         for r in 0..total_rows {
-            frame_buf.push_str(&left_pad);
+            let mut row = String::with_capacity(total_content_w + 64);
+            row.push_str(&left_pad);
             if let Some(line) = left_lines.get(r) {
-                frame_buf.push_str(line);
+                row.push_str(line);
                 if pad_short_left_lines {
                     let line_w = layout::strip_ansi_width(line);
                     if line_w < left_width {
-                        frame_buf.push_str(&" ".repeat(left_width - line_w));
+                        row.push_str(&" ".repeat(left_width - line_w));
                     }
                 }
             } else {
-                frame_buf.push_str(&" ".repeat(left_width));
+                row.push_str(&" ".repeat(left_width));
             }
-            frame_buf.push_str(&gap);
+            row.push_str(&gap);
             if let Some(right_line) = right_lines.get(r) {
-                frame_buf.push_str(right_line);
+                row.push_str(right_line);
             }
-            frame_buf.push_str("\x1b[K\r\n");
+            push_bounded(&mut frame_buf, row, &mut rows_written);
         }
     }
+    frame_buf.push_str("\x1b[J");
     frame_buf
 }
 
@@ -1501,6 +1903,7 @@ fn run_3d(
         });
 
     let mut renderer = rustfetch_render::three_d::Renderer3D::new(shading_mode, shading_chars);
+    renderer.set_light_direction(&config.general.logo.three_d.light);
     renderer.size_scale = size_scale;
     renderer.speed = speed;
     renderer.outer_color = config
@@ -1578,7 +1981,7 @@ fn run_3d(
     let _bg_handle = std::thread::spawn(move || {
         let (bg_modules, bg_configs): (Vec<Box<dyn Module>>, Vec<_>) = bg_configs
             .into_iter()
-            .filter_map(|mc| module_by_name(&mc.name).map(|m| (m, mc)))
+            .filter_map(|mc| module_from_config(&mc).map(|m| (m, mc)))
             .unzip();
         while running_bg.load(std::sync::atomic::Ordering::Relaxed) {
             std::thread::sleep(Duration::from_millis(1000));
@@ -1609,15 +2012,25 @@ fn run_3d(
         cli.frames.or(config.general.logo.three_d.frames)
     };
 
-    let exit_on_key = !cli.hold
-        && !config.general.logo.three_d.hold.unwrap_or(false)
-        && (cli.exit_on_key || config.general.logo.three_d.exit_on_key.unwrap_or(true));
+    let exit_on_key = !cli.hold;
+    let mut prev_term_size = layout::terminal_size();
 
     loop {
+        #[cfg(unix)]
+        if SIGINT_RECEIVED.load(std::sync::atomic::Ordering::SeqCst) {
+            break;
+        }
         if let Some(limit) = max_frames {
             if frame_idx >= limit {
                 break;
             }
+        }
+
+        let (term_cols, term_rows) = layout::terminal_size();
+        if (term_cols, term_rows) != prev_term_size {
+            prev_term_size = (term_cols, term_rows);
+            let _ = stdout.write_all(b"\x1b[2J\x1b[H");
+            right_lines = build_right_lines(&info_lines, &render_opts);
         }
 
         // Receive non-blocking background telemetry updates
@@ -1625,8 +2038,6 @@ fn run_3d(
             info_lines = new_info;
             right_lines = build_right_lines(&info_lines, &render_opts);
         }
-
-        let (term_cols, term_rows) = layout::terminal_size();
 
         // Compute layout
         let right_width = right_lines
@@ -1655,11 +2066,13 @@ fn run_3d(
             cli.height
                 .or(config.general.logo.three_d.height)
                 .unwrap_or(max_stacked_h)
+                .min(term_rows.saturating_sub(4).max(8))
         } else {
             let ideal_h = (canvas_cols * 3 / 5).clamp(18, 24);
             cli.height
                 .or(config.general.logo.three_d.height)
                 .unwrap_or(ideal_h.max(right_lines.len().min(24)))
+                .min(term_rows.saturating_sub(2).max(8))
         };
 
         // Render 3D Logo
@@ -1792,6 +2205,82 @@ fn run_3d(
         }
     }
     running.store(false, std::sync::atomic::Ordering::Relaxed);
+    drop(_guard);
+
+    // Fallback immediately from 3D canvas to static 2D ASCII logo of the same distro
+    print!("\x1b[2J\x1b[H");
+    let _ = std::io::stdout().flush();
+
+    let _wrap_guard = LineWrapGuard::new();
+    let (logo_block, _) = build_ascii_logo_block(
+        config,
+        custom_ascii_path,
+        Some(&distro_name),
+        cli.color.as_deref(),
+    );
+
+    layout::render(Some(&logo_block), &info_lines, &render_opts);
+}
+
+fn build_ascii_logo_block(
+    config: &Config,
+    custom_ascii_path: Option<&str>,
+    distro_override: Option<&str>,
+    dynamic_color: Option<&str>,
+) -> (LogoBlock, Option<&'static str>) {
+    if let Some(raw) = custom_ascii_path
+        .and_then(|ascii_p| {
+            let expanded = shellexpand::tilde(ascii_p);
+            std::fs::read_to_string(expanded.as_ref()).ok()
+        })
+        .filter(|raw| !raw.is_empty())
+    {
+        let processed = if let Some(colors) = &config.general.logo.colors {
+            let codes: Vec<String> = colors.iter().map(|c| layout::color_code(c)).collect();
+            let refs: Vec<&str> = codes.iter().map(|s| s.as_str()).collect();
+            rustfetch_core::apply_neofetch_colors(&raw, &refs)
+        } else {
+            raw
+        };
+        let lines: Vec<String> = processed.lines().map(|s| s.to_string()).collect();
+        let width = lines
+            .iter()
+            .map(|l| layout::strip_ansi_width(l))
+            .max()
+            .unwrap_or(0);
+        return (LogoBlock { lines, width }, None);
+    }
+
+    let distro_name = distro_override.map(str::to_string).unwrap_or_else(|| {
+        if config.general.logo.distro == "auto" {
+            detect_distro_name()
+        } else {
+            config.general.logo.distro.clone()
+        }
+    });
+    let logo = resolve_distro_logo(&distro_name, config.general.padding);
+    let logo_colors = config.general.logo.colors.as_ref().map(|colors| {
+        colors
+            .iter()
+            .map(|c| layout::color_code(c))
+            .collect::<Vec<String>>()
+    });
+    let colored_lines = if let Some(colors) = &logo_colors {
+        let refs: Vec<&str> = colors.iter().map(|s| s.as_str()).collect();
+        logo.colored_lines_with_custom(None, Some(&refs))
+    } else if let Some(dc) = dynamic_color {
+        let dc_code = layout::color_code(dc);
+        logo.colored_lines_with_custom(Some(&dc_code), None)
+    } else {
+        logo.colored_lines()
+    };
+    (
+        LogoBlock {
+            lines: colored_lines,
+            width: logo.width,
+        },
+        Some(logo.color),
+    )
 }
 
 fn run_ascii_animation(
@@ -1899,6 +2388,10 @@ fn run_ascii_animation(
         && (cli.exit_on_key || config.general.logo.animation.exit_on_key.unwrap_or(true));
 
     loop {
+        #[cfg(unix)]
+        if SIGINT_RECEIVED.load(std::sync::atomic::Ordering::SeqCst) {
+            break;
+        }
         if let Some(limit) = max_frames {
             if frame_idx >= limit {
                 break;
@@ -2028,9 +2521,69 @@ fn run_live(
     let _ = enable_raw_mode();
     let _guard = LiveGuard;
 
+    let mut live_config = config.clone();
+    let mut live_configs = configs.to_vec();
+    for mc in &mut live_configs {
+        if matches!(
+            mc.name.as_str(),
+            "memory" | "disk" | "swap" | "battery" | "cpu_usage" | "temp"
+        ) && mc.bar.is_none()
+        {
+            mc.bar = Some(true);
+        }
+    }
+
+    const THEMES: &[&str] = &[
+        "catppuccin",
+        "nord",
+        "dracula",
+        "gruvbox",
+        "tokyonight",
+        "rosepine",
+        "solarized",
+        "monokai",
+        "cyberpunk",
+    ];
+    let mut theme_idx = live_config
+        .general
+        .theme
+        .as_deref()
+        .and_then(|t| THEMES.iter().position(|&x| x.eq_ignore_ascii_case(t)))
+        .unwrap_or(0);
+
+    let mut cpu_history: Vec<u8> = Vec::with_capacity(12);
+    let mut mem_history: Vec<u8> = Vec::with_capacity(12);
+
     loop {
+        if let Some(pct) = rustfetch_core::modules::cpu_usage::CpuUsage
+            .detect()
+            .and_then(|i| extract_percentage(&i.value))
+        {
+            if cpu_history.len() >= 12 {
+                cpu_history.remove(0);
+            }
+            cpu_history.push(pct);
+        }
+        if let Some(pct) = rustfetch_core::modules::memory::Memory
+            .detect()
+            .and_then(|i| extract_percentage(&i.value))
+        {
+            if mem_history.len() >= 12 {
+                mem_history.remove(0);
+            }
+            mem_history.push(pct);
+        }
+
         let _ = queue!(stdout, Clear(ClearType::All), MoveTo(0, 0));
-        run_once(config, cli, modules, configs);
+        run_once(&live_config, cli, modules, &live_configs);
+
+        let colored = layout::colors_enabled();
+        let cpu_spark = render_sparkline(&cpu_history, colored);
+        let mem_spark = render_sparkline(&mem_history, colored);
+        let active_theme = live_config.general.theme.as_deref().unwrap_or("default");
+        print!(
+            "\r\n  \x1b[2mLive Graphs:\x1b[0m CPU {cpu_spark}   RAM {mem_spark}   \x1b[2m|  [t] Theme ({active_theme})  [b] Border  [q] Quit\x1b[0m\r\n"
+        );
         let _ = stdout.flush();
 
         if let Ok(ready) = poll(Duration::from_millis(1000)) {
@@ -2039,6 +2592,7 @@ fn run_live(
                     match event {
                         Event::Key(key)
                             if key.code == KeyCode::Char('q')
+                                || key.code == KeyCode::Char('Q')
                                 || key.code == KeyCode::Esc
                                 || (key.code == KeyCode::Char('c')
                                     && key
@@ -2046,6 +2600,24 @@ fn run_live(
                                         .contains(crossterm::event::KeyModifiers::CONTROL)) =>
                         {
                             break;
+                        }
+                        Event::Key(key)
+                            if key.code == KeyCode::Char('t') || key.code == KeyCode::Char('T') =>
+                        {
+                            theme_idx = (theme_idx + 1) % THEMES.len();
+                            let next_theme = THEMES[theme_idx];
+                            live_config.general.theme = Some(next_theme.to_string());
+                            if let Some(t) = rustfetch_render::get_theme(next_theme) {
+                                live_config.general.border_color = Some(format!(
+                                    "#{:02x}{:02x}{:02x}",
+                                    t.border.0, t.border.1, t.border.2
+                                ));
+                            }
+                        }
+                        Event::Key(key)
+                            if key.code == KeyCode::Char('b') || key.code == KeyCode::Char('B') =>
+                        {
+                            live_config.general.border = !live_config.general.border;
                         }
                         Event::Resize(_, _) => {}
                         _ => {}
@@ -2057,9 +2629,20 @@ fn run_live(
 }
 
 fn build_header() -> Option<String> {
-    let user = std::env::var("USER").ok()?;
-    let hostname = std::fs::read_to_string("/etc/hostname").ok()?;
-    Some(format!("{user}@{}", hostname.trim()))
+    let user = std::env::var("USER")
+        .or_else(|_| std::env::var("LOGNAME"))
+        .ok()?;
+    let hostname = std::fs::read_to_string("/proc/sys/kernel/hostname")
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .or_else(|| {
+            std::fs::read_to_string("/etc/hostname")
+                .ok()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+        })?;
+    Some(format!("{user}@{hostname}"))
 }
 
 fn detect_distro_name() -> String {
@@ -2078,8 +2661,24 @@ fn terminal_supports_kitty() -> bool {
     rustfetch_render::supports_kitty()
 }
 
-fn pick_random_image(dir_path: &str) -> Option<String> {
+fn pick_random_image(dir_path: &str, keep_last: bool) -> Option<String> {
     use std::fs;
+    let base_dir = std::env::var("XDG_CACHE_HOME")
+        .unwrap_or_else(|_| format!("{}/.cache", std::env::var("HOME").unwrap_or_default()));
+    let cache_dir = std::path::PathBuf::from(base_dir).join("rustfetch");
+    let last_logo_file = cache_dir.join("last_logo");
+    let last_picked = fs::read_to_string(&last_logo_file)
+        .ok()
+        .map(|s| s.trim().to_string());
+
+    if keep_last {
+        if let Some(ref lp) = last_picked {
+            if std::path::Path::new(lp).is_file() {
+                return Some(lp.clone());
+            }
+        }
+    }
+
     let expanded = shellexpand::tilde(dir_path);
     let files: Vec<String> = fs::read_dir(expanded.as_ref())
         .ok()?
@@ -2098,12 +2697,6 @@ fn pick_random_image(dir_path: &str) -> Option<String> {
     if files.is_empty() {
         return None;
     }
-
-    let base_dir = std::env::var("XDG_CACHE_HOME")
-        .unwrap_or_else(|_| format!("{}/.cache", std::env::var("HOME").unwrap_or_default()));
-    let cache_dir = std::path::PathBuf::from(base_dir).join("rustfetch");
-    let last_logo_file = cache_dir.join("last_logo");
-    let last_picked = fs::read_to_string(&last_logo_file).ok();
 
     let mut candidates: Vec<&String> = if files.len() > 1 {
         files
@@ -2129,23 +2722,65 @@ fn pick_random_image(dir_path: &str) -> Option<String> {
     Some(chosen)
 }
 
-fn get_image_color(image_path: &str, auto_color: bool) -> Option<String> {
+fn get_image_color_and_palette(
+    image_path: &str,
+    auto_color: bool,
+    want_palette: bool,
+) -> (Option<String>, Option<Vec<(u8, u8, u8)>>) {
     let color_path = format!("{image_path}.color");
+    let mut cached_dom = None;
+    let mut cached_pal = None;
+
     if let Ok(content) = std::fs::read_to_string(&color_path) {
-        let hex = content.trim();
-        if hex.starts_with('#') && (hex.len() == 7 || hex.len() == 4) {
-            return Some(hex.to_string());
+        let mut lines = content.lines();
+        if let Some(first) = lines.next().map(str::trim) {
+            if first.starts_with('#') && (first.len() == 7 || first.len() == 4) {
+                cached_dom = Some(first.to_string());
+            }
+        }
+        if let Some(second) = lines.next().map(str::trim) {
+            let parsed: Vec<(u8, u8, u8)> = second
+                .split(',')
+                .filter_map(|s| rustfetch_render::parse_color(s.trim()))
+                .collect();
+            if !parsed.is_empty() {
+                cached_pal = Some(parsed);
+            }
         }
     }
 
-    if auto_color {
-        if let Some(color) = rustfetch_render::extract_dominant_color(image_path) {
-            let _ = std::fs::write(&color_path, color.as_bytes());
-            return Some(color);
+    let need_dom = auto_color && cached_dom.is_none();
+    let need_pal = want_palette && cached_pal.is_none();
+
+    if need_dom || need_pal {
+        if let Some((dom, pal)) = rustfetch_render::extract_dominant_and_palette(image_path, 16) {
+            let final_dom = cached_dom.or(Some(dom));
+            let final_pal = cached_pal.or(pal);
+            if let Some(ref d) = final_dom {
+                let mut out = d.clone();
+                if let Some(ref p) = final_pal {
+                    let pal_hex: Vec<String> = p
+                        .iter()
+                        .map(|(r, g, b)| format!("#{:02x}{:02x}{:02x}", r, g, b))
+                        .collect();
+                    if !pal_hex.is_empty() {
+                        out.push('\n');
+                        out.push_str(&pal_hex.join(","));
+                    }
+                }
+                let _ = std::fs::write(&color_path, out.as_bytes());
+            }
+            return (
+                if auto_color { final_dom } else { None },
+                if want_palette { final_pal } else { None },
+            );
         }
     }
 
-    None
+    (
+        if auto_color { cached_dom } else { None },
+        if want_palette { cached_pal } else { None },
+    )
 }
 
 fn run_benchmark(modules: &[Box<dyn Module>]) {
@@ -2193,4 +2828,108 @@ fn run_benchmark(modules: &[Box<dyn Module>]) {
         total_ms, total_us
     );
     println!();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_strip_rustfetch_hook_old_bash() {
+        let input = r#"# .bashrc
+export PATH="$HOME/.local/bin:$PATH"
+
+# RustFetch — Automatic responsive redraw for tiling WMs (MangoWM, Hyprland, Sway, etc.)
+if [[ $- == *i* ]]; then
+    _rustfetch_last_size=""
+    _rustfetch_on_resize() {
+        local cur_size
+        cur_size="$(tput cols 2>/dev/null)x$(tput lines 2>/dev/null)"
+        if [ -n "$cur_size" ] && [ "$cur_size" != "$_rustfetch_last_size" ]; then
+            _rustfetch_last_size="$cur_size"
+            if [ -z "$READLINE_LINE" ]; then
+                clear
+                rustfetch
+            fi
+        fi
+    }
+    trap '_rustfetch_on_resize' WINCH
+    _rustfetch_last_size="$(tput cols 2>/dev/null)x$(tput lines 2>/dev/null)"
+    rustfetch
+fi
+
+alias ll='ls -la'
+"#;
+
+        let cleaned = strip_rustfetch_hook(input);
+        assert!(!cleaned.contains("_rustfetch"));
+        assert!(!cleaned.contains("WINCH"));
+        assert!(!cleaned.contains("clear"));
+        assert!(cleaned.contains(r#"export PATH="$HOME/.local/bin:$PATH""#));
+        assert!(cleaned.contains("alias ll='ls -la'"));
+    }
+
+    #[test]
+    fn test_strip_rustfetch_hook_new_bash() {
+        let input = r#"# .bashrc
+export PATH="$HOME/.local/bin:$PATH"
+
+# RustFetch — Shell startup integration
+if [[ $- == *i* ]]; then
+    rustfetch
+fi
+
+alias ll='ls -la'
+"#;
+
+        let cleaned = strip_rustfetch_hook(input);
+        assert!(!cleaned.contains("RustFetch"));
+        assert!(cleaned.contains(r#"export PATH="$HOME/.local/bin:$PATH""#));
+        assert!(cleaned.contains("alias ll='ls -la'"));
+    }
+
+    #[test]
+    fn test_strip_rustfetch_hook_zsh_and_fish() {
+        let zsh_input = r#"# RustFetch — Automatic responsive redraw for tiling WMs (MangoWM, Hyprland, Sway, etc.)
+if [[ -o interactive ]]; then
+    _rustfetch_last_size=""
+    TRAPWINCH() {
+        local cur_size="${COLUMNS}x${LINES}"
+        if [[ -n "$cur_size" && "$cur_size" != "$_rustfetch_last_size" ]]; then
+            _rustfetch_last_size="$cur_size"
+            if [[ -z "$BUFFER" ]]; then
+                clear
+                rustfetch
+                zle && zle reset-prompt 2>/dev/null
+            fi
+        fi
+    }
+    _rustfetch_last_size="${COLUMNS}x${LINES}"
+    rustfetch
+fi
+"#;
+        let cleaned_zsh = strip_rustfetch_hook(zsh_input);
+        assert!(cleaned_zsh.trim().is_empty());
+
+        let fish_input = r#"# RustFetch — Automatic responsive redraw for tiling WMs (MangoWM, Hyprland, Sway, etc.)
+if status is-interactive
+    set -g _rustfetch_last_size ""
+    function _rustfetch_on_resize --on-signal WINCH
+        set -l cur_size (tput cols 2>/dev/null)x(tput lines 2>/dev/null)
+        if test -n "$cur_size" -a "$cur_size" != "$_rustfetch_last_size"
+            set -g _rustfetch_last_size "$cur_size"
+            if test -z (commandline)
+                clear
+                rustfetch
+                commandline -f repaint 2>/dev/null
+            end
+        end
+    end
+    set -g _rustfetch_last_size (tput cols 2>/dev/null)x(tput lines 2>/dev/null)
+    rustfetch
+end
+"#;
+        let cleaned_fish = strip_rustfetch_hook(fish_input);
+        assert!(cleaned_fish.trim().is_empty());
+    }
 }

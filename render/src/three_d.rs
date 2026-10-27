@@ -13,8 +13,8 @@ pub enum ShadingMode {
 impl ShadingMode {
     pub fn from_str_loose(s: &str) -> Self {
         match s.to_lowercase().as_str() {
-            "blocks" | "block" | "quadrants" => Self::Blocks,
-            "sextants" | "sextant" => Self::Sextants,
+            "blocks" | "block" | "quadrants" | "halfblock" | "halfblocks" => Self::Blocks,
+            "sextants" | "sextant" | "braille" => Self::Sextants,
             _ => Self::Ascii,
         }
     }
@@ -500,7 +500,9 @@ pub fn distro_3d_colors(distro: &str) -> (&'static str, &'static str) {
         ("\x1b[38;2;233;84;32m", "\x1b[38;2;255;255;255m") // Ubuntu orange (#e95420), crisp white
     } else if d.contains("debian") {
         ("\x1b[38;2;215;10;83m", "\x1b[38;2;255;255;255m") // Debian red (#d70a53), crisp white
-    } else if d.contains("fedora") {
+    } else if d.contains("bazzite") {
+        ("\x1b[38;2;138;79;255m", "\x1b[38;2;41;168;224m") // Bazzite purple outer (#8a4fff), Fedora blue inner (#29a8e0)
+    } else if d.contains("fedora") || d.contains("nobara") {
         ("\x1b[38;2;41;168;224m", "\x1b[38;2;255;255;255m") // Fedora blue (#29a8e0), crisp pure white inner (#ffffff)
     } else if d.contains("nixos") {
         ("\x1b[38;2;82;119;195m", "\x1b[38;2;126;186;228m") // NixOS blue (#5277c3), cyan inner (#7ebae4)
@@ -520,6 +522,10 @@ pub fn distro_3d_colors(distro: &str) -> (&'static str, &'static str) {
         ("\x1b[38;2;0;180;216m", "\x1b[38;2;0;204;153m") // CachyOS cyan outer (#00b4d8), green inner (#00cc99)
     } else if d.contains("freebsd") || d.contains("bsd") {
         ("\x1b[38;2;218;31;40m", "\x1b[38;2;255;255;255m") // FreeBSD red (#da1f28), white
+    } else if d.contains("bengal") || d == "cat" || d == "kedi" {
+        ("\x1b[38;2;249;175;79m", "\x1b[38;2;102;217;160m") // Bengal amber gold outer (#f9af4f), emerald inner (#66d9a0)
+    } else if d.contains("van") || d.contains("angora") {
+        ("\x1b[38;2;81;190;240m", "\x1b[38;2;255;255;255m") // Turkish Van sky blue outer, pure white inner
     } else {
         ("\x1b[38;2;254;122;230m", "\x1b[38;2;255;255;255m") // Default Tux: vivid pink outer, pure white inner
     }
@@ -555,6 +561,25 @@ impl Renderer3D {
             shading_chars,
             ..Self::default()
         }
+    }
+
+    pub fn set_light_direction(&mut self, light: &str) {
+        let (lx, ly, lz): (f32, f32, f32) = match light.trim().to_ascii_lowercase().as_str() {
+            "top-right" | "topright" => (-0.4082, 0.8165, -0.4082),
+            "front" | "center" => (0.0, 0.0, -1.0),
+            "top" => (0.0, 0.8944, -0.4472),
+            "bottom" => (0.0, -0.8944, -0.4472),
+            _ => (0.4082, 0.8165, -0.4082), // "top-left" default
+        };
+        let vx = 0.0f32;
+        let vy = 0.0f32;
+        let vz = -1.0f32;
+        let hx = lx + vx;
+        let hy = ly + vy;
+        let hz = lz + vz;
+        let hlen = (hx * hx + hy * hy + hz * hz).sqrt().max(1e-6);
+        self.light_dir = (lx, ly, lz);
+        self.half_dir = (hx / hlen, hy / hlen, hz / hlen);
     }
 
     /// Renders a single frame of the 3D model into an array of terminal strings.

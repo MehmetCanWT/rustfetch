@@ -1,5 +1,18 @@
 use std::mem;
 
+pub fn get_winsize_cells() -> Option<(u16, u16)> {
+    unsafe {
+        let mut ws: libc::winsize = mem::zeroed();
+        if libc::ioctl(libc::STDOUT_FILENO, libc::TIOCGWINSZ, &mut ws) == 0
+            && ws.ws_col > 0
+            && ws.ws_row > 0
+        {
+            return Some((ws.ws_col, ws.ws_row));
+        }
+    }
+    None
+}
+
 pub fn get_cell_size() -> Option<(u16, u16)> {
     unsafe {
         let mut ws: libc::winsize = mem::zeroed();

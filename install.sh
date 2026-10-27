@@ -202,65 +202,67 @@ if [ -n "$MAN_SRC" ]; then
     fi
 fi
 
-# 9. Configure default display mode (Interactive selection: 3D vs Standard 2D)
+# 9. Configure default display mode (Preserve existing user config on updates!)
 CONFIG_FILE="$CONFIG_DIR/config.toml"
 
-echo ""
-echo -e "${BLUE}==>${NC} Choose default logo display mode:"
-echo -e "  ${GREEN}1)${NC} Standard 2D   — Classic fastfetch-style static ASCII (~4ms, recommended for .bashrc) [Default]"
-echo -e "  ${GREEN}2)${NC} 3D Animated   — Real-time spinning 3D ASCII relief logo (can also run anytime with 'rfetch --3d')"
-
-MODE_CHOICE="2d"
-if [ -n "$RUSTFETCH_MODE" ]; then
-    case "$RUSTFETCH_MODE" in
-        2|"3d"|"animated"|"three_d") MODE_CHOICE="3d" ;;
-        *) MODE_CHOICE="2d" ;;
-    esac
-elif [ "$CI" = "1" ] || [ "$NONINTERACTIVE" = "1" ] || [ "$DEBIAN_FRONTEND" = "noninteractive" ]; then
-    MODE_CHOICE="2d"
-elif [ -t 0 ] || [ -c /dev/tty ]; then
-    read -rp "Select mode [1-2] (default: 1): " USER_INPUT </dev/tty 2>/dev/null || USER_INPUT="1"
-    case "$USER_INPUT" in
-        2|"3d"|"animated"|"three_d")
-            MODE_CHOICE="3d"
-            ;;
-        *)
-            MODE_CHOICE="2d"
-            ;;
-    esac
+if [ -s "$CONFIG_FILE" ] && [ "${RUSTFETCH_FORCE_CONFIG:-0}" != "1" ]; then
+    echo ""
+    echo -e "${GREEN}==>${NC} Existing user configuration found at ${BLUE}${CONFIG_FILE}${NC} (preserved without changes)."
+    "$FINAL_BIN_DIR/rustfetch" --print-default-config > "$CONFIG_DIR/config.toml.default" 2>/dev/null || true
 else
+    echo ""
+    echo -e "${BLUE}==>${NC} Choose default logo display mode:"
+    echo -e "  ${GREEN}1)${NC} Standard 2D   — Classic fastfetch-style static ASCII (~4ms, recommended for .bashrc) [Default]"
+    echo -e "  ${GREEN}2)${NC} 3D Animated   — Real-time spinning 3D ASCII relief logo (can also run anytime with 'rfetch --3d')"
+
     MODE_CHOICE="2d"
-fi
+    if [ -n "$RUSTFETCH_MODE" ]; then
+        case "$RUSTFETCH_MODE" in
+            2|"3d"|"animated"|"three_d") MODE_CHOICE="3d" ;;
+            *) MODE_CHOICE="2d" ;;
+        esac
+    elif [ "$CI" = "1" ] || [ "$NONINTERACTIVE" = "1" ] || [ "$DEBIAN_FRONTEND" = "noninteractive" ]; then
+        MODE_CHOICE="2d"
+    elif [ -t 0 ] || [ -c /dev/tty ]; then
+        read -rp "Select mode [1-2] (default: 1): " USER_INPUT </dev/tty 2>/dev/null || USER_INPUT="1"
+        case "$USER_INPUT" in
+            2|"3d"|"animated"|"three_d")
+                MODE_CHOICE="3d"
+                ;;
+            *)
+                MODE_CHOICE="2d"
+                ;;
+        esac
+    else
+        MODE_CHOICE="2d"
+    fi
 
-if [ "$MODE_CHOICE" = "3d" ]; then
-    echo -e "${GREEN}==>${NC} Configured default mode: ${BLUE}3D Animated${NC} (3d = true)"
-    if [ ! -f "$CONFIG_FILE" ]; then
-        "$FINAL_BIN_DIR/rustfetch" --print-default-config > "$CONFIG_FILE" 2>/dev/null || true
-    fi
-    if [ -f "$CONFIG_FILE" ]; then
-        if grep -q "\[general\.logo\.three_d\]" "$CONFIG_FILE"; then
-            sed -i '/\[general\.logo\.three_d\]/,/^\[/ s/enabled = .*/enabled = true/' "$CONFIG_FILE"
-        fi
-    fi
-else
-    echo -e "${GREEN}==>${NC} Configured default mode: ${BLUE}Standard 2D${NC} (3d = false)"
-    if [ ! -f "$CONFIG_FILE" ]; then
-        "$FINAL_BIN_DIR/rustfetch" --print-default-config > "$CONFIG_FILE" 2>/dev/null || true
-    fi
-    if [ -f "$CONFIG_FILE" ]; then
-        if grep -q "\[general\.logo\.three_d\]" "$CONFIG_FILE"; then
-            sed -i '/\[general\.logo\.three_d\]/,/^\[/ s/enabled = .*/enabled = false/' "$CONFIG_FILE"
-        fi
-        if grep -q "3d = true" "$CONFIG_FILE"; then
-            sed -i 's/3d = true/3d = false/' "$CONFIG_FILE"
-        fi
-    fi
-fi
+    "$FINAL_BIN_DIR/rustfetch" --print-default-config > "$CONFIG_FILE" 2>/dev/null || true
 
-# 10. Install automatic responsive shell integration hook (Tiling WMs: Hyprland, MangoWM, Sway, etc.)
-if [ -x "$FINAL_BIN_DIR/rustfetch" ]; then
-    echo -e "${BLUE}==>${NC} Installing automatic responsive shell hook for tiling window managers..."
-    "$FINAL_BIN_DIR/rustfetch" --install-hook 2>/dev/null || true
+    if [ "$MODE_CHOICE" = "3d" ]; then
+        echo -e "${GREEN}==>${NC} Configured default mode: ${BLUE}3D Animated${NC} (3d = true)"
+        if [ -f "$CONFIG_FILE" ]; then
+            if grep -q "\[general\.logo\.three_d\]" "$CONFIG_FILE"; then
+                sed -i '/\[general\.logo\.three_d\]/,/^\[/ s/enabled = .*/enabled = true/' "$CONFIG_FILE"
+            fi
+        fi
+    else
+        echo -e "${GREEN}==>${NC} Configured default mode: ${BLUE}Standard 2D${NC} (3d = false)"
+        if [ -f "$CONFIG_FILE" ]; then
+            if grep -q "\[general\.logo\.three_d\]" "$CONFIG_FILE"; then
+                sed -i '/\[general\.logo\.three_d\]/,/^\[/ s/enabled = .*/enabled = false/' "$CONFIG_FILE"
+            fi
+            if grep -q "3d = true" "$CONFIG_FILE"; then
+                sed -i 's/3d = true/3d = false/' "$CONFIG_FILE"
+            fi
+        fi
+    fi
+
+    # 10. Install shell startup integration (only on fresh install)
+    if [ -x "$FINAL_BIN_DIR/rustfetch" ]; then
+        echo -e "${BLUE}==>${NC} Installing shell startup integration..."
+        "$FINAL_BIN_DIR/rustfetch" --install-hook 2>/dev/null || true
+    fi
 fi
 
 echo ""

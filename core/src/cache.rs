@@ -7,10 +7,28 @@ pub struct Cache {
 }
 
 impl Cache {
-    pub fn new(module_name: &str) -> Self {
+    pub fn cache_dir() -> PathBuf {
         let base_dir = std::env::var("XDG_CACHE_HOME")
             .unwrap_or_else(|_| format!("{}/.cache", std::env::var("HOME").unwrap_or_default()));
-        let dir = PathBuf::from(base_dir).join("rustfetch");
+        PathBuf::from(base_dir).join("rustfetch")
+    }
+
+    pub fn clear_all() -> usize {
+        let dir = Self::cache_dir();
+        let Ok(entries) = fs::read_dir(&dir) else {
+            return 0;
+        };
+        let mut removed = 0;
+        for entry in entries.flatten() {
+            if fs::remove_file(entry.path()).is_ok() {
+                removed += 1;
+            }
+        }
+        removed
+    }
+
+    pub fn new(module_name: &str) -> Self {
+        let dir = Self::cache_dir();
         let _ = fs::create_dir_all(&dir);
         Self {
             dir: dir.join(module_name),

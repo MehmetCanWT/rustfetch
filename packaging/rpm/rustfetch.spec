@@ -1,5 +1,5 @@
 Name:           rustfetch
-Version:        0.1.0
+Version:        0.1.2
 Release:        1%{?dist}
 Summary:        A blazing-fast, memory-safe system fetch tool written in Rust
 

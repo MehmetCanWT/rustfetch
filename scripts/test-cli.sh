@@ -59,3 +59,34 @@ if "$BIN" --preset does-not-exist --no-logo > /dev/null 2>&1; then
     printf 'unknown presets must return a non-zero status\n' >&2
     exit 1
 fi
+
+printf '\n==> %s update notification check\n' "$BIN"
+UPDATE_OUTPUT="$TMP_DIR/update-output.txt"
+RUSTFETCH_LATEST_VERSION="9.9.9" "$BIN" --no-logo > "$UPDATE_OUTPUT"
+rg -q 'Update available' "$UPDATE_OUTPUT"
+
+NO_UPDATE_OUTPUT="$TMP_DIR/no-update-output.txt"
+RUSTFETCH_LATEST_VERSION="9.9.9" "$BIN" --no-logo --no-update-check > "$NO_UPDATE_OUTPUT"
+if rg -q 'Update available' "$NO_UPDATE_OUTPUT"; then
+    printf '--no-update-check must suppress update notification\n' >&2
+    exit 1
+fi
+
+printf '\n==> %s discovery, doctor, and cat mascot checks\n' "$BIN"
+"$BIN" --list-modules > "$TMP_DIR/list-modules.txt"
+rg -q 'os_age' "$TMP_DIR/list-modules.txt"
+"$BIN" --list-themes > "$TMP_DIR/list-themes.txt"
+rg -q 'catppuccin' "$TMP_DIR/list-themes.txt"
+"$BIN" --list-presets > "$TMP_DIR/list-presets.txt"
+rg -q 'modern' "$TMP_DIR/list-presets.txt"
+"$BIN" --list-logos > "$TMP_DIR/list-logos.txt"
+rg -q 'bengal' "$TMP_DIR/list-logos.txt"
+"$BIN" --clean-cache > "$TMP_DIR/clean-cache.txt"
+rg -q 'Cleared' "$TMP_DIR/clean-cache.txt"
+RUSTFETCH_LATEST_VERSION="0.1.2" "$BIN" --doctor > "$TMP_DIR/doctor.txt"
+rg -q 'Diagnostics' "$TMP_DIR/doctor.txt"
+"$BIN" -l bengal --no-update-check > "$TMP_DIR/bengal.txt"
+rg -q 'Bengal' "$TMP_DIR/bengal.txt"
+"$BIN" -l turkish_van --no-update-check > "$TMP_DIR/van.txt"
+rg -q 'Turkish Van' "$TMP_DIR/van.txt"
+

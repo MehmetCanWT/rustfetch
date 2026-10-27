@@ -178,17 +178,8 @@ pub fn render_sixel_ex(
     let cell_w = cell_w.max(1) as u32;
     let cell_h = cell_h.max(1) as u32;
 
-    let (fit_cols, fit_rows) = crate::image::fit_dimensions(
-        orig_width,
-        orig_height,
-        Some(target_cols),
-        max_rows,
-        target_cols,
-        max_rows.unwrap_or(24),
-        true,
-    );
-    let fit_cols = fit_cols.max(1);
-    let fit_rows = fit_rows.max(1);
+    let (fit_cols, fit_rows) =
+        crate::image::fit_cell_dimensions(orig_width, orig_height, target_cols, max_rows);
 
     let target_px_width = (fit_cols as u32) * cell_w;
     let target_px_height = (fit_rows as u32) * cell_h;

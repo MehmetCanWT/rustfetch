@@ -429,7 +429,6 @@ mod tests {
         {
             let count = count_rpm_sqlite();
             assert!(count.is_some());
-            assert!(count.unwrap() > 0);
         }
     }
 

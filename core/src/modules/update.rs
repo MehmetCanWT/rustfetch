@@ -78,6 +78,7 @@ const GITHUB_CARGO_TOML_URL: &str =
 const GITHUB_LATEST_RELEASE_URL: &str =
     "https://api.github.com/repos/MehmetCanWT/rustfetch/releases/latest";
 const UPDATE_CACHE_TTL: Duration = Duration::from_secs(6 * 3600);
+const UPDATE_CHECK_THROTTLE: Duration = Duration::from_secs(3600);
 
 pub struct Update;
 
@@ -108,14 +109,18 @@ impl Module for Update {
         }
 
         let cache = Cache::new("update");
+        // Fast path: use fresh cached version (< 6 hours).
         let cached_entry = if let Some(cached) = cache.read(UPDATE_CACHE_TTL) {
-            cached.trim().to_string()
+            Some(cached.trim().to_string())
         } else {
-            let fetched = fetch_latest_github_version().unwrap_or_else(|| current.to_string());
-            cache.write(&fetched);
-            fetched
+            // Cache is expired or missing. Never block interactive fetch!
+            // Trigger asynchronous background update check (detached process).
+            trigger_background_update_check();
+            // Fall back to stale cache if available, so existing update notification is not lost
+            cache.read_stale().map(|s| s.trim().to_string())
         };
 
+        let cached_entry = cached_entry.unwrap_or_else(|| current.to_string());
         let (latest_raw, remote_codename) = split_cached_version_codename(&cached_entry);
         let latest_clean = latest_raw.trim().trim_start_matches(['v', 'V']);
         if is_newer_version(current, latest_clean) {
@@ -126,6 +131,72 @@ impl Module for Update {
         } else {
             None
         }
+    }
+}
+
+/// Checks whether the system has an active default network gateway routing route.
+/// Takes ~5 microseconds (pure /proc/net/route read, 0 network packets).
+pub fn has_default_gateway() -> bool {
+    let Ok(routes) = std::fs::read_to_string("/proc/net/route") else {
+        return true; // Fall back to true if sysfs is inaccessible
+    };
+    for line in routes.lines().skip(1) {
+        let mut fields = line.split_whitespace();
+        let _iface = fields.next();
+        let dest = fields.next();
+        let _gateway = fields.next();
+        let flags = fields.next();
+        if let (Some(dest), Some(flags)) = (dest, flags) {
+            if dest == "00000000" {
+                if let Ok(f) = u32::from_str_radix(flags, 16) {
+                    if f & 0x0001 != 0 {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+    false
+}
+
+/// Spawns a detached background process to refresh the update cache without blocking the shell.
+pub fn trigger_background_update_check() {
+    let throttle_cache = Cache::new("update_throttle");
+    if throttle_cache.read(UPDATE_CHECK_THROTTLE).is_some() {
+        return;
+    }
+    throttle_cache.write("1");
+
+    if !has_default_gateway() {
+        return;
+    }
+
+    if let Ok(exe) = std::env::current_exe() {
+        let _ = Command::new(exe)
+            .arg("--check-updates-bg")
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn();
+    }
+}
+
+/// Executed in the background process to fetch the latest version and update the disk cache.
+pub fn refresh_update_cache() {
+    if !has_default_gateway() {
+        return;
+    }
+    let cache = Cache::new("update");
+    if let Some(fetched) = fetch_latest_github_version() {
+        cache.write(&fetched);
+    } else {
+        let fallback = cache.read_stale().unwrap_or_else(|| {
+            CURRENT_VERSION
+                .trim()
+                .trim_start_matches(['v', 'V'])
+                .to_string()
+        });
+        cache.write(&fallback);
     }
 }
 
@@ -244,40 +315,48 @@ pub fn parse_github_release_info(json_str: &str) -> Option<(String, Option<Strin
 }
 
 fn fetch_url(url: &str) -> Option<String> {
-    if let Ok(output) = Command::new("curl")
+    if !has_default_gateway() {
+        return None;
+    }
+
+    match Command::new("curl")
         .args([
             "-fsSL",
             "--connect-timeout",
-            "1",
-            "--max-time",
             "2",
+            "--max-time",
+            "4",
             "-H",
             "User-Agent: rustfetch",
             url,
         ])
         .output()
     {
-        if output.status.success() {
-            let text = String::from_utf8_lossy(&output.stdout).into_owned();
-            if !text.trim().is_empty() {
-                return Some(text);
+        Ok(output) => {
+            if output.status.success() {
+                let text = String::from_utf8_lossy(&output.stdout).into_owned();
+                if !text.trim().is_empty() {
+                    return Some(text);
+                }
             }
+            None
+        }
+        Err(_) => {
+            // Only try wget if curl binary was not found
+            if let Ok(output) = Command::new("wget")
+                .args(["-qO-", "--timeout=3", "--tries=1", url])
+                .output()
+            {
+                if output.status.success() {
+                    let text = String::from_utf8_lossy(&output.stdout).into_owned();
+                    if !text.trim().is_empty() {
+                        return Some(text);
+                    }
+                }
+            }
+            None
         }
     }
-
-    if let Ok(output) = Command::new("wget")
-        .args(["-qO-", "--timeout=2", "--tries=1", url])
-        .output()
-    {
-        if output.status.success() {
-            let text = String::from_utf8_lossy(&output.stdout).into_owned();
-            if !text.trim().is_empty() {
-                return Some(text);
-            }
-        }
-    }
-
-    None
 }
 
 pub fn check_latest_release() -> Option<(String, String)> {

@@ -55,7 +55,16 @@ pub fn get_wifi_details() -> Option<WifiDetails> {
     }
 
     if let Ok(output) = Command::new("nmcli")
-        .args(["-t", "-f", "active,ssid,signal,freq", "dev", "wifi"])
+        .args([
+            "-t",
+            "-f",
+            "active,ssid,signal,freq",
+            "dev",
+            "wifi",
+            "list",
+            "--rescan",
+            "no",
+        ])
         .output()
     {
         if output.status.success() {

@@ -44,6 +44,10 @@ impl Cache {
         }
     }
 
+    pub fn read_stale(&self) -> Option<String> {
+        fs::read_to_string(&self.dir).ok()
+    }
+
     pub fn write(&self, value: &str) {
         // Write-then-rename prevents another RustFetch process from observing a
         // partially written cache entry.

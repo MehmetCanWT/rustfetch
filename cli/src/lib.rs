@@ -28,6 +28,9 @@ fn cli_version_string() -> &'static str {
     about = "Blazing-fast system information fetch tool written in Rust"
 )]
 struct Cli {
+    #[arg(long, hide = true)]
+    check_updates_bg: bool,
+
     #[arg(long)]
     print_default_config: bool,
 
@@ -499,6 +502,11 @@ pub fn run() {
         libc::signal(libc::SIGPIPE, libc::SIG_DFL);
     }
     let cli = Cli::parse();
+
+    if cli.check_updates_bg {
+        rustfetch_core::modules::update::refresh_update_cache();
+        return;
+    }
 
     if let Some(shell) = &cli.init {
         match shell_init_script(shell) {

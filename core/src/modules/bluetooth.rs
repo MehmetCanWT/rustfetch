@@ -9,6 +9,10 @@ impl Module for BluetoothModule {
         "bluetooth"
     }
 
+    fn is_slow(&self) -> bool {
+        true
+    }
+
     fn detect(&self) -> Option<Info> {
         let mut devices = Vec::new();
 

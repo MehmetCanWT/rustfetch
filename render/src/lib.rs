@@ -1,10 +1,13 @@
+pub mod braille;
 mod color;
 mod image;
+pub mod iterm;
 mod kitty;
 pub mod sixel;
 mod terminal;
 pub mod three_d;
 
+pub use braille::{render_braille, render_braille_ex};
 pub use color::{
     apply_gradient_to_text, extract_color_palette, extract_dominant_and_palette,
     extract_dominant_color, get_theme, interpolate_color, interpolate_gradient, parse_color, Theme,
@@ -14,9 +17,13 @@ pub use image::{
     image_display_dimensions, render_background, render_background_ex, render_halfblock,
     render_halfblock_ex, BackgroundOptions,
 };
+pub use iterm::{encode_iterm, render_iterm, render_iterm_ex};
 pub use kitty::{clear_kitty_images, print_kitty, print_kitty_ex};
 pub use sixel::{encode_sixel, render_sixel_ex};
-pub use terminal::{cell_size_or_default, get_cell_size, supports_kitty, supports_sixel};
+pub use terminal::{
+    cell_size_or_default, get_cell_size, is_tmux, supports_iterm, supports_kitty, supports_sixel,
+    wrap_tmux_passthrough, wrap_tmux_passthrough_always,
+};
 
 pub fn render_image_ex(
     path: &str,

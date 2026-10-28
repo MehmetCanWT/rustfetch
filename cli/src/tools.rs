@@ -34,7 +34,18 @@ pub const MODULE_DESCRIPTIONS: &[(&str, &str)] = &[
         "Real-time aggregate CPU utilization percentage",
     ),
     ("temp", "CPU / hardware thermal sensor temperature"),
-    ("gpu", "Dedicated and integrated GPUs (PCI sysfs)"),
+    (
+        "gpu",
+        "Graphics processor (priority dGPU with iGPU fallback)",
+    ),
+    (
+        "dgpu",
+        "Dedicated discrete GPU only (e.g. NVIDIA / AMD dGPU)",
+    ),
+    (
+        "igpu",
+        "Integrated GPU only (e.g. Intel UHD / AMD Radeon iGPU)",
+    ),
     ("gpu_driver", "Active kernel GPU driver and module version"),
     ("memory", "RAM usage, total capacity, and percentage"),
     ("swap", "Swap memory usage and total capacity"),
@@ -212,14 +223,16 @@ pub fn run_doctor() {
     let colorterm = std::env::var("COLORTERM").unwrap_or_else(|_| "(unset)".to_string());
     let kitty = rustfetch_render::supports_kitty();
     let sixel = rustfetch_render::supports_sixel();
+    let iterm = rustfetch_render::supports_iterm();
     let (cw, ch) = rustfetch_render::cell_size_or_default();
 
     println!("  {BOLD}Terminal:{RESET}        TERM={term_env}, COLORTERM={colorterm}");
     println!("  {BOLD}Grid Size:{RESET}       {cols} cols × {rows} rows (cell: {cw}×{ch} px)");
     println!(
-        "  {BOLD}Graphics:{RESET}        Kitty={}  Sixel={}  TrueColor={}",
+        "  {BOLD}Graphics:{RESET}        Kitty={}  Sixel={}  iTerm2={}  TrueColor={}",
         if kitty { "\x1b[32myes\x1b[0m" } else { "no" },
         if sixel { "\x1b[32myes\x1b[0m" } else { "no" },
+        if iterm { "\x1b[32myes\x1b[0m" } else { "no" },
         if colorterm.contains("truecolor") || colorterm.contains("24bit") {
             "\x1b[32myes\x1b[0m"
         } else {

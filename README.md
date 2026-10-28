@@ -143,7 +143,9 @@ Run `rustfetch --list-modules` at any time to inspect all collectors. Full schem
 | `cpu` | **CPU** | `/proc/cpuinfo` model name, logical thread count, and boost clock |
 | `cpu_usage` | **CPU Usage** | `/proc/stat` jiffies utilization percentage + optional progress bar |
 | `temp` | **Temp** | `/sys/class/hwmon` & `/sys/class/thermal` package/core sensor temperature (`°C`) |
-| `gpu` | **GPU** | `/sys/bus/pci/devices` 3D/VGA controller scanner |
+| `gpu` | **GPU** | Graphics processor (priority dGPU with iGPU fallback, configurable via `type = "dgpu"` / `"igpu"` / `"all"`) |
+| `dgpu` | **dGPU** | Dedicated discrete GPU only (`None` if absent) |
+| `igpu` | **iGPU** | Integrated GPU only (`None` if absent) |
 | `gpu_driver` | **GPU Driver** | Bound kernel module from `/sys/bus/pci/devices/*/driver` (`nvidia 565.77`, `amdgpu`, `xe`, `i915`) |
 | `memory` | **Memory** | `/proc/meminfo` used / total GiB + optional percentage bar |
 | `swap` | **Swap** | `/proc/meminfo` used / total swap GiB |

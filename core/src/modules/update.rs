@@ -34,7 +34,7 @@ const CAT_BREEDS: &[&str] = &[
 /// Returns the official cat breed codename for a given semantic version.
 pub fn codename_for_version(version: &str) -> &'static str {
     let Some((major, minor, patch)) = parse_semver(version) else {
-        return "Bengal";
+        return "Maine Coon";
     };
     match (major, minor, patch) {
         (0, 1, 0) => "Turkish Van",

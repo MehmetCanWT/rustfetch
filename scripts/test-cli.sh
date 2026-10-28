@@ -36,6 +36,29 @@ test -s "$JSON_OUTPUT"
 rg -q '^\[' "$JSON_OUTPUT"
 rg -q '"name"' "$JSON_OUTPUT"
 
+printf '\n==> %s --waybar\n' "$BIN"
+WAYBAR_OUTPUT="$TMP_DIR/output_waybar.json"
+"$BIN" --waybar > "$WAYBAR_OUTPUT"
+test -s "$WAYBAR_OUTPUT"
+rg -q '"class":"rustfetch"' "$WAYBAR_OUTPUT"
+rg -q '"tooltip"' "$WAYBAR_OUTPUT"
+rg -q '"text"' "$WAYBAR_OUTPUT"
+
+printf '\n==> %s --format waybar\n' "$BIN"
+"$BIN" --format waybar > "$WAYBAR_OUTPUT"
+test -s "$WAYBAR_OUTPUT"
+rg -q '"class":"rustfetch"' "$WAYBAR_OUTPUT"
+
+printf '\n==> %s --format WAYBAR\n' "$BIN"
+"$BIN" --format WAYBAR > "$WAYBAR_OUTPUT"
+test -s "$WAYBAR_OUTPUT"
+rg -q '"class":"rustfetch"' "$WAYBAR_OUTPUT"
+
+printf '\n==> %s --format json\n' "$BIN"
+"$BIN" --format json > "$TMP_DIR/output_format_json.json"
+test -s "$TMP_DIR/output_format_json.json"
+rg -q '^\[' "$TMP_DIR/output_format_json.json"
+
 printf '\n==> %s --no-logo --border --border-image-position frame\n' "$BIN"
 "$BIN" --no-logo --border --border-title "System" \
     --border-image images/arch.png --border-image-width 4 \

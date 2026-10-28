@@ -78,6 +78,16 @@ pub fn module_from_config(mc: &crate::config::ModuleConfig) -> Option<Box<dyn Mo
             }
         }
     }
+    if mc.name == "gpu" {
+        let filter = mc.gpu_type.as_deref().unwrap_or("dgpu");
+        return Some(Box::new(gpu::GpuModule::with_type(filter)));
+    }
+    if mc.name == "dgpu" {
+        return Some(Box::new(gpu::DgpuModule));
+    }
+    if mc.name == "igpu" {
+        return Some(Box::new(gpu::IgpuModule));
+    }
     module_by_name(&mc.name)
 }
 
@@ -103,7 +113,9 @@ pub fn module_by_name(name: &str) -> Option<Box<dyn Module>> {
         "cpu" => Some(Box::new(cpu::Cpu)),
         "cpu_usage" => Some(Box::new(cpu_usage::CpuUsage)),
         "temp" => Some(Box::new(temp::Temp)),
-        "gpu" => Some(Box::new(gpu::GpuModule)),
+        "gpu" => Some(Box::new(gpu::GpuModule::default())),
+        "dgpu" => Some(Box::new(gpu::DgpuModule)),
+        "igpu" => Some(Box::new(gpu::IgpuModule)),
         "gpu_driver" | "driver" => Some(Box::new(gpu_driver::GpuDriver)),
         "memory" => Some(Box::new(memory::Memory)),
         "swap" => Some(Box::new(swap::Swap)),
@@ -174,7 +186,16 @@ mod tests {
         assert!(module_by_name("disk:/home").is_some());
         assert!(module_by_name("update").is_some());
         assert!(module_by_name("custom").is_some());
+        assert!(module_by_name("gpu").is_some());
+        assert!(module_by_name("dgpu").is_some());
+        assert!(module_by_name("igpu").is_some());
         assert!(module_by_name("break").is_some());
         assert!(module_by_name("nonexistent").is_none());
+
+        assert!(module_from_config(&crate::config::ModuleConfig::new("dgpu")).is_some());
+        assert!(module_from_config(&crate::config::ModuleConfig::new("igpu")).is_some());
+        let mut gpu_cfg = crate::config::ModuleConfig::new("gpu");
+        gpu_cfg.gpu_type = Some("igpu".to_string());
+        assert!(module_from_config(&gpu_cfg).is_some());
     }
 }

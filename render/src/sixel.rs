@@ -5,6 +5,7 @@ use fast_image_resize as fr;
 use image::ImageReader;
 
 use crate::terminal;
+pub use crate::terminal::{is_tmux, wrap_tmux_passthrough};
 
 /// Map an 8-bit RGBA pixel to a 232-color palette index:
 /// 0..215: 6x6x6 RGB cube
@@ -46,44 +47,50 @@ fn emit_rle(out: &mut String, ch: char, count: usize) {
 
 /// Encodes an RGBA image buffer into a Sixel escape sequence.
 pub fn encode_sixel(rgba_data: &[u8], width: u32, height: u32) -> String {
-    if rgba_data.is_empty() || width == 0 || height == 0 {
+    let total_pixels = (width as usize) * (height as usize);
+    if total_pixels == 0 || rgba_data.len() < total_pixels * 4 {
         return String::new();
     }
 
-    let mut out = String::with_capacity((width * height) as usize);
+    let mut out = String::with_capacity(total_pixels);
 
     // DCS q (Sixel graphic intro with aspect ratio 1:1 and dimensions)
     let _ = write!(out, "\x1bPq\"1;1;{width};{height}");
 
-    // Define 6x6x6 color cube (indices 0..215)
-    for r in 0..6 {
-        let r_pct = (r * 100 + 2) / 5;
-        for g in 0..6 {
-            let g_pct = (g * 100 + 2) / 5;
-            for b in 0..6 {
-                let b_pct = (b * 100 + 2) / 5;
-                let idx = r * 36 + g * 6 + b;
-                let _ = write!(out, "#{idx};2;{r_pct};{g_pct};{b_pct}");
-            }
-        }
-    }
-
-    // Define 16 grayscale levels (indices 216..231)
-    for i in 0..16 {
-        let pct = (i * 100 + 7) / 15;
-        let idx = 216 + i;
-        let _ = write!(out, "#{idx};2;{pct};{pct};{pct}");
-    }
-
-    // Map all pixels to palette indices
-    let total_pixels = (width * height) as usize;
+    // Map all pixels to palette indices and track referenced colors
     let mut indexed: Vec<Option<u8>> = Vec::with_capacity(total_pixels);
+    let mut referenced_colors = [false; 232];
     for chunk in rgba_data.as_chunks::<4>().0 {
-        indexed.push(quantize_pixel(chunk[0], chunk[1], chunk[2], chunk[3]));
+        let p = quantize_pixel(chunk[0], chunk[1], chunk[2], chunk[3]);
+        if let Some(c) = p {
+            referenced_colors[c as usize] = true;
+        }
+        indexed.push(p);
+    }
+
+    // Output palette color definitions ONLY for referenced colors
+    for (idx, &referenced) in referenced_colors.iter().enumerate() {
+        if !referenced {
+            continue;
+        }
+        if idx < 216 {
+            let r = idx / 36;
+            let g = (idx / 6) % 6;
+            let b = idx % 6;
+            let r_pct = (r * 100 + 2) / 5;
+            let g_pct = (g * 100 + 2) / 5;
+            let b_pct = (b * 100 + 2) / 5;
+            let _ = write!(out, "#{idx};2;{r_pct};{g_pct};{b_pct}");
+        } else {
+            let i = idx - 216;
+            let pct = (i * 100 + 7) / 15;
+            let _ = write!(out, "#{idx};2;{pct};{pct};{pct}");
+        }
     }
 
     let w = width as usize;
     let h = height as usize;
+    let mut line_chars = Vec::with_capacity(w);
 
     // Process image in 6-row bands
     for band_y in (0..h).step_by(6) {
@@ -116,8 +123,8 @@ pub fn encode_sixel(rgba_data: &[u8], width: u32, height: u32) -> String {
 
             let _ = write!(out, "#{color_id}");
 
-            // Build sixel column values for this color
-            let mut line_chars = Vec::with_capacity(w);
+            // Build sixel column values for this color by reusing line_chars buffer
+            line_chars.clear();
             for x in 0..w {
                 let mut bits = 0u8;
                 for dy in 0..6 {
@@ -194,7 +201,7 @@ pub fn render_sixel_ex(
     )?;
 
     let sixel_payload = encode_sixel(&buf, target_px_width, target_px_height);
-    print!("{sixel_payload}");
+    print!("{}", wrap_tmux_passthrough(&sixel_payload));
     let _ = std::io::stdout().flush();
 
     Some((fit_cols, fit_rows))
@@ -218,5 +225,33 @@ mod tests {
         let encoded = encode_sixel(&rgba, 2, 1);
         assert!(encoded.starts_with("\x1bPq\"1;1;2;1"));
         assert!(encoded.ends_with("\x1b\\"));
+    }
+
+    #[test]
+    fn test_sixel_tmux_passthrough() {
+        let rgba = vec![255, 0, 0, 255];
+        let encoded = encode_sixel(&rgba, 1, 1);
+        let wrapped = crate::terminal::wrap_tmux_passthrough_always(&encoded);
+        assert!(wrapped.starts_with("\x1bPtmux;\x1b\x1bPq\"1;1;1;1"));
+        assert!(wrapped.ends_with("\x1b\x1b\\\x1b\\"));
+    }
+
+    #[test]
+    fn test_encode_sixel_palette_optimization() {
+        let rgba = vec![255, 0, 0, 255]; // Red: index 180 (5 * 36)
+        let encoded = encode_sixel(&rgba, 1, 1);
+        assert!(encoded.contains("#180;2;100;0;0"));
+        // Indices not referenced in the image must not be defined
+        assert!(!encoded.contains("#0;2;"));
+        assert!(!encoded.contains("#231;2;"));
+    }
+
+    #[test]
+    fn test_encode_sixel_truncated_buffer() {
+        // Buffer has only 3 bytes, but 1x1 requires 4 bytes
+        assert_eq!(encode_sixel(&[255, 0, 0], 1, 1), "");
+        // 2x2 requires 16 bytes, only 12 provided
+        let twelve_bytes = [255u8; 12];
+        assert_eq!(encode_sixel(&twelve_bytes, 2, 2), "");
     }
 }

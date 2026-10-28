@@ -9,6 +9,10 @@ impl Module for CpuUsage {
         "cpu_usage"
     }
 
+    fn is_slow(&self) -> bool {
+        true
+    }
+
     fn detect(&self) -> Option<Info> {
         let (t1, i1) = read_proc_stat()?;
         std::thread::sleep(Duration::from_millis(50));

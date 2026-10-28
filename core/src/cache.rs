@@ -35,6 +35,13 @@ impl Cache {
         }
     }
 
+    pub fn for_path(path: PathBuf) -> Self {
+        if let Some(parent) = path.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        Self { dir: path }
+    }
+
     pub fn read(&self, ttl: Duration) -> Option<String> {
         let modified = fs::metadata(&self.dir).ok()?.modified().ok()?;
         if SystemTime::now().duration_since(modified).ok()? < ttl {

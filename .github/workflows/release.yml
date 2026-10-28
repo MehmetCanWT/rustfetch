@@ -90,11 +90,17 @@ jobs:
           cp README.md LICENSE "$STAGE/"
           cp docs/rustfetch.1 "$STAGE/man/rustfetch.1"
 
-          if [ "${{ matrix.use_cross }}" = "false" ]; then
-            "$STAGE/rustfetch" --completions bash > "$STAGE/completions/rustfetch.bash"
+          if "$STAGE/rustfetch" --completions bash > "$STAGE/completions/rustfetch.bash" 2>/dev/null; then
             "$STAGE/rustfetch" --completions zsh > "$STAGE/completions/_rustfetch"
             "$STAGE/rustfetch" --completions fish > "$STAGE/completions/rustfetch.fish"
+          else
+            cargo run -q --bin rustfetch -- --completions bash > "$STAGE/completions/rustfetch.bash"
+            cargo run -q --bin rustfetch -- --completions zsh > "$STAGE/completions/_rustfetch"
+            cargo run -q --bin rustfetch -- --completions fish > "$STAGE/completions/rustfetch.fish"
           fi
+          test -s "$STAGE/completions/rustfetch.bash"
+          test -s "$STAGE/completions/_rustfetch"
+          test -s "$STAGE/completions/rustfetch.fish"
 
           # 1. Clean platform tarball (no 'unknown' in filename)
           ARCHIVE="rustfetch-v${VER}-${PLATFORM}.tar.gz"

@@ -88,3 +88,88 @@ pub fn supports_sixel() -> bool {
     }
     false
 }
+
+pub fn supports_iterm() -> bool {
+    use std::io::IsTerminal;
+    if !std::io::stdout().is_terminal() {
+        return false;
+    }
+    if std::env::var("NO_COLOR").is_ok() || std::env::var("TERM").as_deref() == Ok("dumb") {
+        return false;
+    }
+    if std::env::var("ITERM_SESSION_ID").is_ok() || std::env::var("ITERM_SUPPORT").is_ok() {
+        return true;
+    }
+    if let Ok(prog) = std::env::var("TERM_PROGRAM") {
+        let p = prog.to_lowercase();
+        if p.contains("iterm")
+            || p.contains("wezterm")
+            || p.contains("warp")
+            || p.contains("tabby")
+            || p.contains("mintty")
+            || p.contains("konsole")
+        {
+            return true;
+        }
+    }
+    if let Ok(term) = std::env::var("TERM") {
+        let t = term.to_lowercase();
+        if t.contains("iterm") || t.contains("wezterm") || t.contains("konsole") {
+            return true;
+        }
+    }
+    false
+}
+
+pub fn is_tmux() -> bool {
+    if std::env::var("TMUX").is_ok() {
+        return true;
+    }
+    if let Ok(term) = std::env::var("TERM") {
+        if term.starts_with("tmux") || term.starts_with("screen") {
+            return true;
+        }
+    }
+    false
+}
+
+pub fn wrap_tmux_passthrough(seq: &str) -> String {
+    if !is_tmux() {
+        return seq.to_string();
+    }
+    wrap_tmux_passthrough_always(seq)
+}
+
+pub fn wrap_tmux_passthrough_always(seq: &str) -> String {
+    let mut out = Vec::with_capacity(seq.len() + 32);
+    out.extend_from_slice(b"\x1bPtmux;");
+    for &b in seq.as_bytes() {
+        if b == 0x1b {
+            out.extend_from_slice(b"\x1b\x1b");
+        } else {
+            out.push(b);
+        }
+    }
+    out.extend_from_slice(b"\x1b\\");
+    // SAFETY: Input was valid UTF-8 and we only inserted ASCII escape bytes
+    unsafe { String::from_utf8_unchecked(out) }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_wrap_tmux_passthrough_always() {
+        let kitty_cmd = "\x1b_Ga=d,d=a\x1b\\";
+        let wrapped = wrap_tmux_passthrough_always(kitty_cmd);
+        assert_eq!(wrapped, "\x1bPtmux;\x1b\x1b_Ga=d,d=a\x1b\x1b\\\x1b\\");
+
+        let sixel_cmd = "\x1bPq\"1;1;2;1\x1b\\";
+        let wrapped_sixel = wrap_tmux_passthrough_always(sixel_cmd);
+        assert_eq!(
+            wrapped_sixel,
+            "\x1bPtmux;\x1b\x1bPq\"1;1;2;1\x1b\x1b\\\x1b\\"
+        );
+    }
+}

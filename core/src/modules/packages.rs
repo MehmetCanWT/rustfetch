@@ -30,12 +30,17 @@ impl Module for PackagesModule {
             packages.push(format!("{flatpak_count} (flatpak)"));
         }
 
-        if std::path::Path::new("/var/lib/rpm").exists()
-            || std::path::Path::new("/usr/bin/rpm").exists()
-        {
-            if let Ok(output) = Command::new("rpm").arg("-qa").output() {
-                let count = count_nonempty_lines(&String::from_utf8_lossy(&output.stdout));
-                if output.status.success() && count > 0 {
+        let mut rpm_counted = false;
+        if let Some(count) = count_rpm_sqlite() {
+            if count > 0 {
+                packages.push(format!("{count} (rpm)"));
+            }
+            rpm_counted = true;
+        }
+
+        if !rpm_counted {
+            if let Some(count) = count_rpm_fallback() {
+                if count > 0 {
                     packages.push(format!("{count} (rpm)"));
                 }
             }
@@ -181,6 +186,189 @@ pub fn count_brew_cellars(paths: &[std::path::PathBuf]) -> usize {
     total
 }
 
+fn count_rpm_sqlite() -> Option<usize> {
+    const CANDIDATES: &[&str] = &[
+        "/usr/share/rpm/rpmdb.sqlite",
+        "/var/lib/rpm/rpmdb.sqlite",
+        "/usr/lib/sysimage/rpm/rpmdb.sqlite",
+    ];
+
+    let db_path = CANDIDATES
+        .iter()
+        .map(std::path::Path::new)
+        .find(|p| p.is_file())?;
+
+    let c_path = std::ffi::CString::new(db_path.to_str()?).ok()?;
+
+    type Sqlite3OpenV2 = unsafe extern "C" fn(
+        filename: *const libc::c_char,
+        pp_db: *mut *mut libc::c_void,
+        flags: libc::c_int,
+        z_vfs: *const libc::c_char,
+    ) -> libc::c_int;
+    type Sqlite3PrepareV2 = unsafe extern "C" fn(
+        db: *mut libc::c_void,
+        z_sql: *const libc::c_char,
+        n_byte: libc::c_int,
+        pp_stmt: *mut *mut libc::c_void,
+        pz_tail: *mut *const libc::c_char,
+    ) -> libc::c_int;
+    type Sqlite3Step = unsafe extern "C" fn(p_stmt: *mut libc::c_void) -> libc::c_int;
+    type Sqlite3ColumnInt64 =
+        unsafe extern "C" fn(p_stmt: *mut libc::c_void, i_col: libc::c_int) -> i64;
+    type Sqlite3Finalize = unsafe extern "C" fn(p_stmt: *mut libc::c_void) -> libc::c_int;
+    type Sqlite3Close = unsafe extern "C" fn(p_db: *mut libc::c_void) -> libc::c_int;
+
+    const SQLITE_OK: libc::c_int = 0;
+    const SQLITE_ROW: libc::c_int = 100;
+    const SQLITE_OPEN_READONLY: libc::c_int = 0x00000001;
+
+    let lib = unsafe {
+        let lib0 = libc::dlopen(c"libsqlite3.so.0".as_ptr(), libc::RTLD_LAZY);
+        if !lib0.is_null() {
+            lib0
+        } else {
+            libc::dlopen(c"libsqlite3.so".as_ptr(), libc::RTLD_LAZY)
+        }
+    };
+    if lib.is_null() {
+        return None;
+    }
+
+    unsafe {
+        let sym_open = libc::dlsym(lib, c"sqlite3_open_v2".as_ptr());
+        let sym_prep = libc::dlsym(lib, c"sqlite3_prepare_v2".as_ptr());
+        let sym_step = libc::dlsym(lib, c"sqlite3_step".as_ptr());
+        let sym_col = libc::dlsym(lib, c"sqlite3_column_int64".as_ptr());
+        let sym_fin = libc::dlsym(lib, c"sqlite3_finalize".as_ptr());
+        let sym_close = libc::dlsym(lib, c"sqlite3_close".as_ptr());
+
+        if sym_open.is_null()
+            || sym_prep.is_null()
+            || sym_step.is_null()
+            || sym_col.is_null()
+            || sym_fin.is_null()
+            || sym_close.is_null()
+        {
+            libc::dlclose(lib);
+            return None;
+        }
+
+        let fn_open: Sqlite3OpenV2 = std::mem::transmute(sym_open);
+        let fn_prep: Sqlite3PrepareV2 = std::mem::transmute(sym_prep);
+        let fn_step: Sqlite3Step = std::mem::transmute(sym_step);
+        let fn_col: Sqlite3ColumnInt64 = std::mem::transmute(sym_col);
+        let fn_fin: Sqlite3Finalize = std::mem::transmute(sym_fin);
+        let fn_close: Sqlite3Close = std::mem::transmute(sym_close);
+
+        let mut db: *mut libc::c_void = std::ptr::null_mut();
+
+        if fn_open(
+            c_path.as_ptr(),
+            &mut db,
+            SQLITE_OPEN_READONLY,
+            std::ptr::null(),
+        ) != SQLITE_OK
+            || db.is_null()
+        {
+            if !db.is_null() {
+                fn_close(db);
+            }
+            libc::dlclose(lib);
+            return None;
+        }
+
+        let mut count: Option<usize> = None;
+        for sql in [
+            c"SELECT count(*) FROM Packages".as_ptr(),
+            c"SELECT count(*) FROM Sigmd5".as_ptr(),
+        ] {
+            let mut stmt: *mut libc::c_void = std::ptr::null_mut();
+            if fn_prep(db, sql, -1, &mut stmt, std::ptr::null_mut()) == SQLITE_OK && !stmt.is_null()
+            {
+                if fn_step(stmt) == SQLITE_ROW {
+                    let n = fn_col(stmt, 0);
+                    if n >= 0 {
+                        count = Some(n as usize);
+                    }
+                }
+                fn_fin(stmt);
+            }
+            if count.is_some() {
+                break;
+            }
+        }
+
+        fn_close(db);
+        libc::dlclose(lib);
+        count
+    }
+}
+
+pub fn count_rpm_from_cache_or_exec<F>(
+    rpmdb_path: Option<&std::path::Path>,
+    cache: &Cache,
+    exec_rpm: F,
+) -> Option<usize>
+where
+    F: FnOnce() -> Option<usize>,
+{
+    let mtime_stamp = rpmdb_path.and_then(|p| {
+        fs::metadata(p)
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| t.duration_since(std::time::SystemTime::UNIX_EPOCH).ok())
+            .map(|d| format!("{}:{}", d.as_secs(), d.subsec_nanos()))
+    });
+
+    if let (Some(ref stamp), Some(cached)) = (&mtime_stamp, cache.read_stale()) {
+        if let Some((cached_stamp, count_str)) = cached.trim().split_once(' ') {
+            if cached_stamp == stamp {
+                if let Ok(count) = count_str.parse::<usize>() {
+                    return Some(count);
+                }
+            }
+        }
+    }
+
+    let count = exec_rpm()?;
+    if let Some(ref stamp) = mtime_stamp {
+        cache.write(&format!("{stamp} {count}"));
+    }
+    Some(count)
+}
+
+pub fn count_rpm_fallback() -> Option<usize> {
+    const CANDIDATES: &[&str] = &[
+        "/var/lib/rpm/rpmdb.sqlite",
+        "/usr/share/rpm/rpmdb.sqlite",
+        "/usr/lib/sysimage/rpm/rpmdb.sqlite",
+        "/var/lib/rpm/Packages",
+        "/var/lib/rpm",
+    ];
+
+    let rpmdb_path = CANDIDATES
+        .iter()
+        .map(std::path::Path::new)
+        .find(|p| p.exists());
+
+    let cache = Cache::new("rpm_cache");
+
+    count_rpm_from_cache_or_exec(rpmdb_path, &cache, || {
+        if std::path::Path::new("/var/lib/rpm").exists()
+            || std::path::Path::new("/usr/bin/rpm").exists()
+        {
+            if let Ok(output) = Command::new("rpm").arg("-qa").output() {
+                let count = count_nonempty_lines(&String::from_utf8_lossy(&output.stdout));
+                if output.status.success() && count > 0 {
+                    return Some(count);
+                }
+            }
+        }
+        None
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -232,5 +420,58 @@ mod tests {
     #[test]
     fn test_count_nonempty_lines() {
         assert_eq!(count_nonempty_lines("package-a\n\n package-b \n"), 2);
+    }
+
+    #[test]
+    fn test_count_rpm_sqlite() {
+        if std::path::Path::new("/usr/share/rpm/rpmdb.sqlite").exists()
+            || std::path::Path::new("/var/lib/rpm/rpmdb.sqlite").exists()
+        {
+            let count = count_rpm_sqlite();
+            assert!(count.is_some());
+            assert!(count.unwrap() > 0);
+        }
+    }
+
+    #[test]
+    fn test_rpm_fallback_cache_with_mtime() {
+        let tmp =
+            std::env::temp_dir().join(format!("rustfetch_rpm_cache_test_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+
+        let fake_rpmdb = tmp.join("rpmdb.sqlite");
+        fs::write(&fake_rpmdb, b"fake-db").unwrap();
+
+        let cache_file = tmp.join("rpm_cache");
+        let cache = Cache::for_path(cache_file);
+
+        let mut exec_count = 0;
+        let count1 = count_rpm_from_cache_or_exec(Some(&fake_rpmdb), &cache, || {
+            exec_count += 1;
+            Some(42)
+        });
+        assert_eq!(count1, Some(42));
+        assert_eq!(exec_count, 1);
+
+        // Second call with same mtime should read from cache without executing closure
+        let count2 = count_rpm_from_cache_or_exec(Some(&fake_rpmdb), &cache, || {
+            exec_count += 1;
+            Some(999)
+        });
+        assert_eq!(count2, Some(42));
+        assert_eq!(exec_count, 1);
+
+        // Third call after updating mtime should invalidate cache and re-execute closure
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        fs::write(&fake_rpmdb, b"updated-fake-db").unwrap();
+        let count3 = count_rpm_from_cache_or_exec(Some(&fake_rpmdb), &cache, || {
+            exec_count += 1;
+            Some(100)
+        });
+        assert_eq!(count3, Some(100));
+        assert_eq!(exec_count, 2);
+
+        let _ = fs::remove_dir_all(&tmp);
     }
 }

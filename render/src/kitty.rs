@@ -2,6 +2,8 @@ use base64::prelude::*;
 use std::fmt::Write as _;
 use std::io::Write;
 
+use crate::terminal::wrap_tmux_passthrough;
+
 fn compress_and_encode(rgba_data: &[u8]) -> (bool, String) {
     let compressed = miniz_oxide::deflate::compress_to_vec_zlib(rgba_data, 6);
     let use_compression = compressed.len() < rgba_data.len();
@@ -35,7 +37,7 @@ pub fn print_kitty_ex(
 
     for (i, chunk) in chunks.iter().enumerate() {
         let m = if i == chunks.len() - 1 { 0 } else { 1 };
-        if i == 0 {
+        let seq = if i == 0 {
             let mut cmd = format!("\x1b_Ga=T,c={cols},r={rows},q=2,f=32,s={width},v={height}");
             if use_compression {
                 cmd.push_str(",o=z");
@@ -47,10 +49,11 @@ pub fn print_kitty_ex(
                 cmd.push_str(",C=1");
             }
             let _ = write!(cmd, ",m={m};{chunk}\x1b\\");
-            print!("{cmd}");
+            cmd
         } else {
-            print!("\x1b_Gm={m},q=2;{chunk}\x1b\\");
-        }
+            format!("\x1b_Gm={m},q=2;{chunk}\x1b\\")
+        };
+        print!("{}", wrap_tmux_passthrough(&seq));
     }
     let _ = std::io::stdout().flush();
 }
@@ -82,22 +85,24 @@ pub fn print_kitty_animation(frames: &[KittyFrame], width: u32, height: u32, col
         for (chunk_idx, chunk) in chunks.iter().enumerate() {
             let m = if chunk_idx == chunks.len() - 1 { 0 } else { 1 };
 
-            if chunk_idx == 0 {
+            let seq = if chunk_idx == 0 {
                 let a = if frame_idx == 0 { 'T' } else { 'f' };
                 let o = if use_compression { ",o=z" } else { "" };
-                print!(
+                format!(
                     "\x1b_Ga={},c={},r={},q=2,i={},f=32{},s={},v={},z={},m={};{}\x1b\\",
                     a, cols, rows, image_id, o, width, height, frame.delay_ms, m, chunk
-                );
+                )
             } else if frame_idx == 0 {
-                print!("\x1b_Gm={},q=2;{}\x1b\\", m, chunk);
+                format!("\x1b_Gm={},q=2;{}\x1b\\", m, chunk)
             } else {
-                print!("\x1b_Ga=f,q=2,i={},m={};{}\x1b\\", image_id, m, chunk);
-            }
+                format!("\x1b_Ga=f,q=2,i={},m={};{}\x1b\\", image_id, m, chunk)
+            };
+            print!("{}", wrap_tmux_passthrough(&seq));
         }
     }
 
-    print!("\x1b_Ga=a,q=2,i={},s=3,v=1\x1b\\", image_id);
+    let finish_seq = format!("\x1b_Ga=a,q=2,i={},s=3,v=1\x1b\\", image_id);
+    print!("{}", wrap_tmux_passthrough(&finish_seq));
     let _ = std::io::stdout().flush();
 }
 
@@ -105,6 +110,6 @@ pub fn clear_kitty_images() {
     if !crate::terminal::supports_kitty() {
         return;
     }
-    print!("\x1b_Ga=d,d=a\x1b\\");
+    print!("{}", wrap_tmux_passthrough("\x1b_Ga=d,d=a\x1b\\"));
     let _ = std::io::stdout().flush();
 }

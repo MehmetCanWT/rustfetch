@@ -8,6 +8,10 @@ impl Module for Media {
         "media"
     }
 
+    fn is_slow(&self) -> bool {
+        true
+    }
+
     fn detect(&self) -> Option<Info> {
         get_mpris_media()
     }

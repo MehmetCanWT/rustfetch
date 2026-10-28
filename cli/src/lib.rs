@@ -116,6 +116,15 @@ struct Cli {
     #[arg(long)]
     json: bool,
 
+    #[arg(
+        long,
+        help = "Output system information as Waybar / Polybar single-line JSON"
+    )]
+    waybar: bool,
+
+    #[arg(long, value_name = "FORMAT", help = "Output format (e.g. waybar)")]
+    format: Option<String>,
+
     #[arg(long, value_name = "PATH")]
     ascii: Option<String>,
 
@@ -793,10 +802,24 @@ pub fn run() {
     let is_3d = is_3d_requested && is_interactive && !is_dumb && !cli.keep_logo;
     let is_anim = is_anim_requested && is_interactive && !is_dumb && !cli.keep_logo;
     let is_live = (cli.live || config.general.live) && is_interactive && !is_dumb && !cli.keep_logo;
+    let is_waybar = cli.waybar
+        || cli
+            .format
+            .as_deref()
+            .map(|f| f.eq_ignore_ascii_case("waybar"))
+            .unwrap_or(false);
+    let is_json = cli.json
+        || cli
+            .format
+            .as_deref()
+            .map(|f| f.eq_ignore_ascii_case("json"))
+            .unwrap_or(false);
 
     if cli.benchmark {
         run_benchmark(&modules);
-    } else if cli.json {
+    } else if is_waybar {
+        run_waybar(&config, &modules, &configs);
+    } else if is_json {
         run_json(&config, &modules, &configs);
     } else if is_3d {
         run_3d(&config, &cli, &modules, &configs);
@@ -869,7 +892,7 @@ fn begin_keep_logo_frame(keep_logo: bool) {
     if keep_logo && layout::colors_enabled() {
         print!("\x1b[?2026h");
         if terminal_supports_kitty() {
-            print!("\x1b_Ga=d,d=a\x1b\\");
+            rustfetch_render::clear_kitty_images();
         }
         print!("\x1b[2J\x1b[3J\x1b[H");
     }
@@ -929,7 +952,7 @@ fn run_once_inner(
         }
 
         if let Some(img_path) = &resolved_image_path {
-            let expanded_img = shellexpand::tilde(img_path).to_string();
+            let expanded_img = tilde_expand(img_path).to_string();
             resolved_image_path = Some(expanded_img.clone());
             let (dom, pal) = get_image_color_and_palette(
                 &expanded_img,
@@ -1030,7 +1053,7 @@ fn run_once_inner(
             .border_image
             .as_deref()
             .or(config.general.border_image.as_deref())
-            .map(|p| shellexpand::tilde(p).to_string());
+            .map(|p| tilde_expand(p).to_string());
         let border_image_width = cli
             .border_image_width
             .or(config.general.border_image_width)
@@ -1211,6 +1234,11 @@ fn run_once_inner(
                 protocol == "kitty" || (protocol == "auto" && terminal_supports_kitty());
             let use_sixel = protocol == "sixel"
                 || (protocol == "auto" && !use_kitty && rustfetch_render::supports_sixel());
+            let use_iterm = protocol == "iterm"
+                || (protocol == "auto"
+                    && !use_kitty
+                    && !use_sixel
+                    && rustfetch_render::supports_iterm());
 
             if effective_logo_pos == "behind" && terminal_supports_kitty() {
                 let card_w = max_right_w
@@ -1321,11 +1349,55 @@ fn run_once_inner(
                     return;
                 }
                 end_keep_logo_frame(cli.keep_logo);
+            } else if use_iterm {
+                let total_fetch_w = if effective_logo_pos == "top" || effective_logo_pos == "bottom"
+                {
+                    est_cols.max(bounded_card_w)
+                } else {
+                    est_cols + layout::LOGO_GAP + bounded_card_w
+                };
+                let h_pad = layout::compute_h_pad(
+                    total_fetch_w,
+                    config.general.padding,
+                    config.general.center,
+                );
+
+                begin_keep_logo_frame(cli.keep_logo);
+                if effective_logo_pos != "top" && effective_logo_pos != "bottom" && reserve_rows > 1
+                {
+                    print!(
+                        "{}\x1b[{}A\r",
+                        "\n".repeat(reserve_rows - 1),
+                        reserve_rows - 1
+                    );
+                }
+
+                if h_pad > 0 {
+                    print!("{}", " ".repeat(h_pad));
+                    let _ = std::io::stdout().flush();
+                }
+
+                if let Some((actual_cols, actual_lines)) =
+                    rustfetch_render::render_iterm_ex(image_path, target_cols, max_image_rows)
+                {
+                    layout::render_with_image(
+                        actual_lines,
+                        actual_cols,
+                        h_pad,
+                        &info_lines,
+                        &render_opts,
+                    );
+                    end_keep_logo_frame(cli.keep_logo);
+                    return;
+                }
+                end_keep_logo_frame(cli.keep_logo);
             }
 
-            if let Some(lines) =
+            if let Some(lines) = if protocol == "braille" {
+                rustfetch_render::render_braille_ex(image_path, target_cols, max_image_rows, true)
+            } else {
                 rustfetch_render::render_halfblock_ex(image_path, target_cols, max_image_rows, true)
-            {
+            } {
                 let w = lines
                     .first()
                     .map(|l| layout::strip_ansi_width(l))
@@ -1401,6 +1473,94 @@ fn run_json(
     }
 
     if let Ok(json_str) = serde_json::to_string_pretty(&outputs) {
+        println!("{json_str}");
+    }
+}
+
+#[derive(Serialize)]
+struct WaybarOutput {
+    text: String,
+    tooltip: String,
+    class: &'static str,
+}
+
+fn generate_waybar_json(
+    config: &Config,
+    modules: &[Box<dyn Module>],
+    configs: &[rustfetch_core::config::ModuleConfig],
+) -> String {
+    let info_lines = gather_info_lines(config, modules, configs, None, None);
+    let header = build_header();
+    let render_opts = layout::RenderOptions {
+        header: header.as_deref(),
+        header_color: None,
+        separator: &config.general.separator,
+        padding: 0,
+        center: false,
+        border: false,
+        border_style: None,
+        border_color: None,
+        border_chars: None,
+        border_title: None,
+        box_padding: 0,
+        palette_lines: None,
+        palette_position: "none",
+        icon_only: false,
+        key_type: None,
+        border_image: None,
+        border_image_position: "none",
+        border_images: &[],
+        logo_position: "none",
+    };
+
+    let right_lines = layout::build_right_lines(&info_lines, &render_opts);
+    let tooltip_lines: Vec<String> = right_lines
+        .into_iter()
+        .map(|l| layout::strip_ansi(&l))
+        .collect();
+    let tooltip = tooltip_lines.join("\n").trim().to_string();
+
+    let raw_text = if let Some(os_line) = info_lines
+        .iter()
+        .find(|l| l.label.eq_ignore_ascii_case("os"))
+    {
+        let clean_val = layout::strip_ansi(&os_line.value);
+        if let Some(icon) = &os_line.icon {
+            format!("{icon} {clean_val}")
+        } else {
+            clean_val
+        }
+    } else if let Some(first_line) = info_lines
+        .iter()
+        .find(|l| !l.value.is_empty() && !l.label.starts_with("---DIVIDER"))
+    {
+        let clean_val = layout::strip_ansi(&first_line.value);
+        if let Some(icon) = &first_line.icon {
+            format!("{icon} {clean_val}")
+        } else {
+            clean_val
+        }
+    } else {
+        "rustfetch".to_string()
+    };
+    let text = layout::strip_ansi(&raw_text).trim().to_string();
+
+    let output = WaybarOutput {
+        text,
+        tooltip,
+        class: "rustfetch",
+    };
+
+    serde_json::to_string(&output).unwrap_or_default()
+}
+
+fn run_waybar(
+    config: &Config,
+    modules: &[Box<dyn Module>],
+    configs: &[rustfetch_core::config::ModuleConfig],
+) {
+    let json_str = generate_waybar_json(config, modules, configs);
+    if !json_str.is_empty() {
         println!("{json_str}");
     }
 }
@@ -1900,7 +2060,7 @@ fn run_3d(
 
     let (model, distro_outer, distro_inner) = custom_ascii_path
         .and_then(|ascii_p| {
-            let expanded = shellexpand::tilde(ascii_p);
+            let expanded = tilde_expand(ascii_p);
             rustfetch_core::ascii::load_ascii_lines(std::path::Path::new(expanded.as_ref())).ok()
         })
         .filter(|lines| !lines.is_empty())
@@ -2253,7 +2413,7 @@ fn build_ascii_logo_block(
 ) -> (LogoBlock, Option<&'static str>) {
     if let Some(raw) = custom_ascii_path
         .and_then(|ascii_p| {
-            let expanded = shellexpand::tilde(ascii_p);
+            let expanded = tilde_expand(ascii_p);
             std::fs::read_to_string(expanded.as_ref()).ok()
         })
         .filter(|raw| !raw.is_empty())
@@ -2329,7 +2489,7 @@ fn run_ascii_animation(
         }
     };
 
-    let expanded = shellexpand::tilde(path_str);
+    let expanded = tilde_expand(path_str);
     let p = std::path::Path::new(expanded.as_ref());
     let frames = match rustfetch_core::ascii::load_ascii_frames(p) {
         Ok(f) if !f.is_empty() => f,
@@ -2684,54 +2844,158 @@ fn terminal_supports_kitty() -> bool {
     rustfetch_render::supports_kitty()
 }
 
+pub fn tilde_expand(path: &str) -> std::borrow::Cow<'_, str> {
+    if path == "~" {
+        if let Ok(home) = std::env::var("HOME") {
+            return std::borrow::Cow::Owned(home);
+        }
+    } else if let Some(stripped) = path.strip_prefix("~/") {
+        if let Ok(home) = std::env::var("HOME") {
+            let home_trimmed = home.trim_end_matches('/');
+            return std::borrow::Cow::Owned(format!("{home_trimmed}/{stripped}"));
+        }
+    }
+    std::borrow::Cow::Borrowed(path)
+}
+
+pub fn filter_candidate_images<'a>(files: &'a [String], recent: &[String]) -> Vec<&'a String> {
+    let n = files.len();
+    let exclude_count = match n {
+        0 | 1 => 0,
+        2 => 1,
+        3 => 2,
+        _ => 3,
+    };
+
+    let mut relevant_recent: Vec<&str> = Vec::new();
+    for r in recent {
+        let r_str = r.as_str();
+        let r_name = std::path::Path::new(r_str).file_name();
+        let matches = files.iter().any(|f| {
+            f.as_str() == r_str
+                || (r_name.is_some() && std::path::Path::new(f.as_str()).file_name() == r_name)
+        });
+        if matches && !relevant_recent.contains(&r_str) {
+            relevant_recent.push(r_str);
+        }
+    }
+
+    let excluded: Vec<&str> = relevant_recent.into_iter().take(exclude_count).collect();
+
+    let candidates: Vec<&String> = files
+        .iter()
+        .filter(|f| {
+            let f_str = f.as_str();
+            let f_name = std::path::Path::new(f_str).file_name();
+            !excluded.iter().any(|&ex| {
+                ex == f_str || (f_name.is_some() && std::path::Path::new(ex).file_name() == f_name)
+            })
+        })
+        .collect();
+
+    if candidates.is_empty() {
+        files.iter().collect()
+    } else {
+        candidates
+    }
+}
+
+pub fn update_recent_history(recent: &[String], chosen: &str) -> Vec<String> {
+    let mut updated = Vec::with_capacity(3);
+    updated.push(chosen.to_string());
+    for r in recent {
+        if r != chosen && updated.len() < 3 {
+            updated.push(r.clone());
+        }
+    }
+    updated
+}
+
 fn pick_random_image(dir_path: &str, keep_last: bool) -> Option<String> {
     use std::fs;
     let base_dir = std::env::var("XDG_CACHE_HOME")
         .unwrap_or_else(|_| format!("{}/.cache", std::env::var("HOME").unwrap_or_default()));
     let cache_dir = std::path::PathBuf::from(base_dir).join("rustfetch");
     let last_logo_file = cache_dir.join("last_logo");
-    let last_picked = fs::read_to_string(&last_logo_file)
-        .ok()
-        .map(|s| s.trim().to_string());
+    let recent_images_file = cache_dir.join("recent_images");
 
-    if keep_last {
-        if let Some(ref lp) = last_picked {
-            if std::path::Path::new(lp).is_file() {
-                return Some(lp.clone());
+    let expanded = tilde_expand(dir_path);
+    let expanded_path = std::path::Path::new(expanded.as_ref());
+    if !expanded_path.is_dir() {
+        return None;
+    }
+
+    let entries = fs::read_dir(expanded_path).ok()?;
+    let mut files: Vec<String> = Vec::new();
+    for entry in entries.flatten() {
+        let file_name = entry.file_name();
+        let Some(name_str) = file_name.to_str() else {
+            continue;
+        };
+        let is_image_ext = std::path::Path::new(name_str)
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .map(|ext| {
+                ext.eq_ignore_ascii_case("png")
+                    || ext.eq_ignore_ascii_case("jpg")
+                    || ext.eq_ignore_ascii_case("jpeg")
+                    || ext.eq_ignore_ascii_case("gif")
+                    || ext.eq_ignore_ascii_case("webp")
+            })
+            .unwrap_or(false);
+        if !is_image_ext {
+            continue;
+        }
+        let is_file = entry
+            .file_type()
+            .map(|ft| ft.is_file() || (ft.is_symlink() && entry.path().is_file()))
+            .unwrap_or(false);
+        if is_file {
+            if let Some(s) = entry.path().to_str() {
+                files.push(s.to_string());
+            }
+        }
+    }
+    if files.is_empty() {
+        return None;
+    }
+    files.sort();
+
+    let mut recent: Vec<String> = fs::read_to_string(&recent_images_file)
+        .ok()
+        .map(|content| {
+            content
+                .lines()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .take(3)
+                .collect()
+        })
+        .unwrap_or_default();
+
+    if recent.is_empty() {
+        if let Ok(last) = fs::read_to_string(&last_logo_file) {
+            let trimmed = last.trim();
+            if !trimmed.is_empty() {
+                recent.push(trimmed.to_string());
             }
         }
     }
 
-    let expanded = shellexpand::tilde(dir_path);
-    let files: Vec<String> = fs::read_dir(expanded.as_ref())
-        .ok()?
-        .flatten()
-        .filter_map(|entry| {
-            let path = entry.path();
-            if path.is_file() {
-                let ext = path.extension()?.to_str()?.to_lowercase();
-                if matches!(ext.as_str(), "png" | "jpg" | "jpeg" | "gif" | "webp") {
-                    return path.to_str().map(String::from);
-                }
+    if keep_last {
+        if let Some(first) = recent.first() {
+            let first_name = std::path::Path::new(first).file_name();
+            if let Some(matched) = files.iter().find(|f| {
+                f.as_str() == first.as_str()
+                    || (first_name.is_some()
+                        && std::path::Path::new(f.as_str()).file_name() == first_name)
+            }) {
+                return Some(matched.clone());
             }
-            None
-        })
-        .collect();
-    if files.is_empty() {
-        return None;
+        }
     }
 
-    let mut candidates: Vec<&String> = if files.len() > 1 {
-        files
-            .iter()
-            .filter(|f| last_picked.as_deref() != Some(f.as_str()))
-            .collect()
-    } else {
-        Vec::new()
-    };
-    if candidates.is_empty() {
-        candidates = files.iter().collect();
-    }
+    let candidates = filter_candidate_images(&files, &recent);
 
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -2739,8 +3003,11 @@ fn pick_random_image(dir_path: &str, keep_last: bool) -> Option<String> {
         .subsec_nanos();
     let chosen = candidates[(nanos as usize) % candidates.len()].clone();
 
+    let updated_recent = update_recent_history(&recent, &chosen);
+
     let _ = fs::create_dir_all(&cache_dir);
     let _ = fs::write(&last_logo_file, chosen.as_bytes());
+    let _ = fs::write(&recent_images_file, updated_recent.join("\n").as_bytes());
 
     Some(chosen)
 }
@@ -2955,5 +3222,153 @@ end
 "#;
         let cleaned_fish = strip_rustfetch_hook(fish_input);
         assert!(cleaned_fish.trim().is_empty());
+    }
+
+    #[test]
+    fn test_tilde_expand() {
+        assert_eq!(tilde_expand("foo/bar"), "foo/bar");
+        assert_eq!(tilde_expand("/etc/os-release"), "/etc/os-release");
+        if let Ok(home) = std::env::var("HOME") {
+            let trimmed = home.trim_end_matches('/');
+            assert_eq!(tilde_expand("~"), home);
+            assert_eq!(tilde_expand("~/foo/bar"), format!("{trimmed}/foo/bar"));
+        }
+    }
+
+    #[test]
+    fn test_pick_random_image() {
+        let tmp = std::env::temp_dir().join(format!("rustfetch_img_test_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+
+        // Non-images that should be ignored:
+        std::fs::write(tmp.join("png"), b"not an image").unwrap();
+        std::fs::write(tmp.join(".png"), b"hidden file").unwrap();
+        std::fs::write(tmp.join("readme.txt"), b"text").unwrap();
+        assert!(pick_random_image(tmp.to_str().unwrap(), false).is_none());
+
+        // Valid image
+        std::fs::write(tmp.join("logo.png"), b"pngdata").unwrap();
+        let picked = pick_random_image(tmp.to_str().unwrap(), false);
+        assert!(picked.is_some());
+        assert!(picked.unwrap().ends_with("logo.png"));
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn test_candidate_filtering_rules() {
+        // N = 1: picks the single image even if it was recently used
+        let files_n1 = vec!["img1.png".to_string()];
+        let recent_n1 = vec!["img1.png".to_string()];
+        let c_n1 = filter_candidate_images(&files_n1, &recent_n1);
+        assert_eq!(c_n1, vec![&files_n1[0]]);
+
+        // N = 2: excludes the last 1 used image, picks the other
+        let files_n2 = vec!["img1.png".to_string(), "img2.png".to_string()];
+        let recent_n2_a = vec!["img1.png".to_string()];
+        let c_n2_a = filter_candidate_images(&files_n2, &recent_n2_a);
+        assert_eq!(c_n2_a, vec![&files_n2[1]]); // picks img2
+
+        let recent_n2_b = vec!["img2.png".to_string(), "img1.png".to_string()];
+        let c_n2_b = filter_candidate_images(&files_n2, &recent_n2_b);
+        assert_eq!(c_n2_b, vec![&files_n2[0]]); // picks img1
+
+        // N = 3: excludes the last 2 used images, picks the 3rd one
+        let files_n3 = vec![
+            "img1.png".to_string(),
+            "img2.png".to_string(),
+            "img3.png".to_string(),
+        ];
+        let recent_n3 = vec!["img2.png".to_string(), "img1.png".to_string()];
+        let c_n3 = filter_candidate_images(&files_n3, &recent_n3);
+        assert_eq!(c_n3, vec![&files_n3[2]]); // picks img3
+
+        let recent_n3_cycle = vec![
+            "img3.png".to_string(),
+            "img2.png".to_string(),
+            "img1.png".to_string(),
+        ];
+        let c_n3_cycle = filter_candidate_images(&files_n3, &recent_n3_cycle);
+        assert_eq!(c_n3_cycle, vec![&files_n3[0]]); // picks img1
+
+        // N = 4+: excludes the last 3 used images, candidates are the remaining images
+        let files_n5 = vec![
+            "img1.png".to_string(),
+            "img2.png".to_string(),
+            "img3.png".to_string(),
+            "img4.png".to_string(),
+            "img5.png".to_string(),
+        ];
+        let recent_n5 = vec![
+            "img3.png".to_string(),
+            "img2.png".to_string(),
+            "img1.png".to_string(),
+        ];
+        let c_n5 = filter_candidate_images(&files_n5, &recent_n5);
+        assert_eq!(c_n5, vec![&files_n5[3], &files_n5[4]]); // only img4 and img5
+        assert!(!c_n5.iter().any(|&c| recent_n5.contains(c)));
+
+        // Foreign / deleted paths in history must not consume exclusion slots
+        let recent_with_deleted = vec![
+            "/deleted/old.png".to_string(),
+            "img2.png".to_string(),
+            "img1.png".to_string(),
+        ];
+        let c_foreign = filter_candidate_images(&files_n3, &recent_with_deleted);
+        assert_eq!(c_foreign, vec![&files_n3[2]]); // correctly excludes img2 and img1, picks img3
+
+        // Duplicate entries in recent history do not burn multiple exclusion slots
+        let recent_dups = vec![
+            "img2.png".to_string(),
+            "img2.png".to_string(),
+            "img1.png".to_string(),
+        ];
+        let c_dups = filter_candidate_images(&files_n3, &recent_dups);
+        assert_eq!(c_dups, vec![&files_n3[2]]); // still excludes img2 and img1
+
+        // History update keeps max 3 entries with chosen at front and deduplicates
+        let h1 = update_recent_history(
+            &["img2.png".to_string(), "img1.png".to_string()],
+            "img3.png",
+        );
+        assert_eq!(h1, vec!["img3.png", "img2.png", "img1.png"]);
+
+        let h2 = update_recent_history(&h1, "img4.png");
+        assert_eq!(h2, vec!["img4.png", "img3.png", "img2.png"]);
+
+        let h3 = update_recent_history(&h2, "img3.png");
+        assert_eq!(h3, vec!["img3.png", "img4.png", "img2.png"]);
+    }
+
+    #[test]
+    fn test_generate_waybar_json() {
+        let config = Config::default();
+        let (modules, configs): (Vec<_>, Vec<_>) = config
+            .modules
+            .iter()
+            .filter_map(|mc| module_from_config(mc).map(|m| (m, mc.clone())))
+            .unzip();
+        let json_str = generate_waybar_json(&config, &modules, &configs);
+        assert!(!json_str.is_empty());
+        assert!(
+            !json_str.contains('\n'),
+            "Waybar output must be a single line"
+        );
+        let parsed: serde_json::Value = serde_json::from_str(&json_str).expect("Valid JSON");
+        assert_eq!(parsed["class"], "rustfetch");
+        assert!(parsed.get("text").is_some());
+        assert!(parsed.get("tooltip").is_some());
+        let tooltip = parsed["tooltip"].as_str().unwrap();
+        assert!(
+            !tooltip.contains("\x1b["),
+            "ANSI escape codes must be stripped from tooltip"
+        );
+        let text = parsed["text"].as_str().unwrap();
+        assert!(
+            !text.contains("\x1b["),
+            "ANSI escape codes must be stripped from text"
+        );
+        assert!(!text.is_empty());
     }
 }

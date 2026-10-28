@@ -8,8 +8,8 @@ repository.workspace = true
 default-run = "rustfetch"
 
 [dependencies]
-rustfetch-core = { path = "../core", version = "0.1.2" }
-rustfetch-render = { path = "../render", version = "0.1.2" }
+rustfetch-core = { path = "../core", version = "0.1.3" }
+rustfetch-render = { path = "../render", version = "0.1.3" }
 clap = { version = "4", features = ["derive"] }
 clap_complete = "4"
 serde = { workspace = true }
@@ -17,7 +17,6 @@ serde_json = { workspace = true }
 unicode-width = "0.2"
 libc = "0.2"
 crossterm = "0.29.0"
-shellexpand = "3.1.2"
 
 [lib]
 name = "rustfetch"

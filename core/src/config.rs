@@ -1,17 +1,60 @@
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(default)]
+pub struct GpuConfig {
+    #[serde(alias = "gpu_type", alias = "filter", alias = "display")]
+    pub r#type: String,
+}
+
+impl Default for GpuConfig {
+    fn default() -> Self {
+        Self {
+            r#type: "dgpu".to_string(),
+        }
+    }
+}
+
+fn is_default_gpu_config(cfg: &GpuConfig) -> bool {
+    cfg.r#type == "dgpu"
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Config {
     pub general: GeneralConfig,
     pub modules: Vec<ModuleConfig>,
+    #[serde(skip_serializing_if = "is_default_gpu_config")]
+    pub gpu: GpuConfig,
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum GpuConfigHelper {
+    Table(GpuConfig),
+    TypeStr(String),
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum ModulesFieldHelper {
+    List(Vec<ModuleConfig>),
+    Table(ModulesSectionHelper),
+}
+
+#[derive(Deserialize, Default)]
+#[serde(default)]
+struct ModulesSectionHelper {
+    gpu: Option<GpuConfigHelper>,
+    list: Option<Vec<ModuleConfig>>,
 }
 
 #[derive(Deserialize, Default)]
 #[serde(default)]
 struct ConfigRaw {
     general: Option<GeneralConfig>,
-    modules: Option<Vec<ModuleConfig>>,
+    modules: Option<ModulesFieldHelper>,
+    gpu: Option<GpuConfigHelper>,
     border: Option<BorderFieldHelper>,
     border_image: Option<BorderImageFieldHelper>,
     border_images: Option<Vec<BorderImageConfig>>,
@@ -52,9 +95,35 @@ impl<'de> Deserialize<'de> for Config {
             general.logo = l;
         }
 
-        let modules = raw.modules.unwrap_or_else(|| Config::default().modules);
+        let (mut modules, table_gpu) = match raw.modules {
+            Some(ModulesFieldHelper::List(list)) => (list, None),
+            Some(ModulesFieldHelper::Table(tbl)) => (
+                tbl.list.unwrap_or_else(|| Config::default().modules),
+                tbl.gpu,
+            ),
+            None => (Config::default().modules, None),
+        };
 
-        Ok(Config { general, modules })
+        let raw_gpu = raw.gpu.or(table_gpu);
+        let gpu = match raw_gpu {
+            Some(GpuConfigHelper::Table(cfg)) => cfg,
+            Some(GpuConfigHelper::TypeStr(s)) => GpuConfig { r#type: s },
+            None => GpuConfig::default(),
+        };
+
+        if gpu.r#type != "dgpu" {
+            for m in &mut modules {
+                if m.name == "gpu" && m.gpu_type.is_none() {
+                    m.gpu_type = Some(gpu.r#type.clone());
+                }
+            }
+        }
+
+        Ok(Config {
+            general,
+            modules,
+            gpu,
+        })
     }
 }
 
@@ -717,13 +786,21 @@ pub struct ModuleConfig {
     pub bar_width: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gpu_type: Option<String>,
 }
 
 #[derive(Deserialize, Default)]
 #[serde(default)]
 struct ModuleConfigTableHelper {
-    #[serde(alias = "type", alias = "module", alias = "id")]
-    name: String,
+    name: Option<String>,
+    #[serde(rename = "type")]
+    type_field: Option<String>,
+    #[serde(alias = "filter", alias = "display")]
+    gpu_type: Option<String>,
+    gpu: Option<GpuConfigHelper>,
+    module: Option<String>,
+    id: Option<String>,
     #[serde(alias = "text", alias = "title", alias = "key")]
     label: Option<String>,
     #[serde(alias = "logo", alias = "symbol", alias = "prefix")]
@@ -741,7 +818,7 @@ struct ModuleConfigTableHelper {
 #[serde(untagged)]
 enum ModuleConfigHelper {
     Name(String),
-    Table(ModuleConfigTableHelper),
+    Table(Box<ModuleConfigTableHelper>),
 }
 
 impl<'de> Deserialize<'de> for ModuleConfig {
@@ -751,17 +828,57 @@ impl<'de> Deserialize<'de> for ModuleConfig {
     {
         match ModuleConfigHelper::deserialize(deserializer)? {
             ModuleConfigHelper::Name(name) => Ok(ModuleConfig::new(name)),
-            ModuleConfigHelper::Table(t) => Ok(ModuleConfig {
-                name: t.name,
-                label: t.label,
-                icon: t.icon,
-                color: t.color,
-                value: t.value,
-                format: t.format,
-                bar: t.bar,
-                bar_width: t.bar_width,
-                path: t.path,
-            }),
+            ModuleConfigHelper::Table(t) => {
+                let (name, mut gpu_type) = match (t.name, t.module, t.id, t.type_field) {
+                    (Some(n), _, _, tf) => {
+                        if n == "gpu" {
+                            (n, tf)
+                        } else {
+                            (n, None)
+                        }
+                    }
+                    (None, Some(m), _, tf) => {
+                        if m == "gpu" {
+                            (m, tf)
+                        } else {
+                            (m, None)
+                        }
+                    }
+                    (None, None, Some(id), tf) => {
+                        if id == "gpu" {
+                            (id, tf)
+                        } else {
+                            (id, None)
+                        }
+                    }
+                    (None, None, None, Some(tf)) => (tf, None),
+                    (None, None, None, None) => (String::new(), None),
+                };
+
+                if name == "gpu" {
+                    if let Some(gt) = t.gpu_type {
+                        gpu_type = Some(gt);
+                    } else if let Some(gpu_helper) = t.gpu {
+                        match gpu_helper {
+                            GpuConfigHelper::Table(cfg) => gpu_type = Some(cfg.r#type),
+                            GpuConfigHelper::TypeStr(s) => gpu_type = Some(s),
+                        }
+                    }
+                }
+
+                Ok(ModuleConfig {
+                    name,
+                    label: t.label,
+                    icon: t.icon,
+                    color: t.color,
+                    value: t.value,
+                    format: t.format,
+                    bar: t.bar,
+                    bar_width: t.bar_width,
+                    path: t.path,
+                    gpu_type,
+                })
+            }
         }
     }
 }
@@ -885,7 +1002,7 @@ pub fn default_icon_for_module(name: &str) -> Option<&'static str> {
         "font" => Some("󰛖"),
         "terminal" => Some("󰆍"),
         "cpu" => Some("󰍛"),
-        "gpu" => Some("󰢮"),
+        "gpu" | "dgpu" | "igpu" => Some("󰢮"),
         "gpu_driver" | "driver" => Some("󰢮"),
         "memory" => Some("󰘚"),
         "swap" => Some("󰓡"),
@@ -968,6 +1085,7 @@ impl Default for Config {
                 "terminal", "cpu", "gpu", "memory", "swap", "disk", "battery", "local_ip",
                 "locale",
             ]),
+            gpu: GpuConfig::default(),
         }
     }
 }
@@ -1254,7 +1372,14 @@ impl Config {
             }
         }
 
-        for top_key in ["border", "border_image", "border_images", "colors", "logo"] {
+        for top_key in [
+            "border",
+            "border_image",
+            "border_images",
+            "colors",
+            "logo",
+            "gpu",
+        ] {
             if let Some(v) = root.get(top_key) {
                 let mut single_top = toml::Table::new();
                 single_top.insert(top_key.to_string(), v.clone());
@@ -1297,8 +1422,22 @@ impl Config {
                         "logo" => {
                             cfg.general.logo = partial_cfg.general.logo;
                         }
+                        "gpu" => {
+                            cfg.gpu = partial_cfg.gpu;
+                        }
                         _ => {}
                     }
+                    recovered_any = true;
+                }
+            }
+        }
+
+        if let Some(toml::Value::Table(mods_tbl)) = root.get("modules") {
+            if let Some(gpu_val) = mods_tbl.get("gpu") {
+                let mut single_gpu = toml::Table::new();
+                single_gpu.insert("gpu".to_string(), gpu_val.clone());
+                if let Ok(partial_cfg) = Config::deserialize(toml::Value::Table(single_gpu)) {
+                    cfg.gpu = partial_cfg.gpu;
                     recovered_any = true;
                 }
             }
@@ -1316,6 +1455,14 @@ impl Config {
             if !valid_mods.is_empty() {
                 cfg.modules = valid_mods;
                 recovered_any = true;
+            }
+        }
+
+        if cfg.gpu.r#type != "dgpu" {
+            for m in &mut cfg.modules {
+                if m.name == "gpu" && m.gpu_type.is_none() {
+                    m.gpu_type = Some(cfg.gpu.r#type.clone());
+                }
             }
         }
 
@@ -1568,7 +1715,7 @@ infinite = true
 #
 # Available modules:
 #   os, os_age, host, board, kernel, uptime, packages, shell, desktop, font,
-#   terminal, cpu, cpu_usage, temp, gpu, gpu_driver, memory, swap, disk,
+#   terminal, cpu, cpu_usage, temp, gpu, dgpu, igpu, gpu_driver, memory, swap, disk,
 #   battery, power_profile, brightness, display, sound, wifi, net_io,
 #   local_ip, locale, processes, media, init, container, update,
 #   break (blank spacer line), divider (horizontal rule), custom
@@ -1581,6 +1728,7 @@ infinite = true
 #   bar       - true/false: display percentage progress bar
 #   bar_width - Width of progress bar in characters (default: 10)
 #   path      - Mount point for disk module (e.g. path = "/home")
+#   type      - GPU filter for gpu module: "dgpu" (priority dGPU), "igpu" (integrated only), "all" (both)
 #   value     - Static text value (for name = "custom")
 
 [[modules]]
@@ -1758,7 +1906,14 @@ name = "locale"
                     if let Some(mapped_name) = map_fastfetch_type(mod_type) {
                         let allow_multiple = matches!(
                             mapped_name,
-                            "break" | "custom" | "divider" | "packages" | "gpu" | "disk"
+                            "break"
+                                | "custom"
+                                | "divider"
+                                | "packages"
+                                | "gpu"
+                                | "dgpu"
+                                | "igpu"
+                                | "disk"
                         );
                         if allow_multiple || seen.insert(mapped_name) {
                             let mut mc = ModuleConfig::new(mapped_name);
@@ -1785,7 +1940,14 @@ name = "locale"
                     if let Some(mapped_name) = map_fastfetch_type(mod_name) {
                         let allow_multiple = matches!(
                             mapped_name,
-                            "break" | "custom" | "divider" | "packages" | "gpu" | "disk"
+                            "break"
+                                | "custom"
+                                | "divider"
+                                | "packages"
+                                | "gpu"
+                                | "dgpu"
+                                | "igpu"
+                                | "disk"
                         );
                         if allow_multiple || seen.insert(mapped_name) {
                             converted.push(ModuleConfig::new(mapped_name));
@@ -1820,6 +1982,8 @@ fn map_fastfetch_type(ff_type: &str) -> Option<&'static str> {
         "cpu" => Some("cpu"),
         "cpu_usage" | "cpuusage" => Some("cpu_usage"),
         "gpu" => Some("gpu"),
+        "dgpu" => Some("dgpu"),
+        "igpu" => Some("igpu"),
         "memory" => Some("memory"),
         "swap" => Some("swap"),
         "disk" => Some("disk"),
@@ -2519,5 +2683,104 @@ separator = 12345
         assert_eq!(salvaged.modules.len(), 2);
         assert_eq!(salvaged.modules[0].name, "os");
         assert_eq!(salvaged.modules[1].name, "cpu");
+    }
+
+    #[test]
+    fn test_gpu_config_formats() {
+        // 1. [gpu] top-level table
+        let toml_gpu_top = r#"
+        [gpu]
+        type = "igpu"
+        "#;
+        let cfg1 = Config::from_toml(toml_gpu_top).unwrap();
+        assert_eq!(cfg1.gpu.r#type, "igpu");
+        let gpu_mod1 = cfg1.modules.iter().find(|m| m.name == "gpu").unwrap();
+        assert_eq!(gpu_mod1.gpu_type.as_deref(), Some("igpu"));
+
+        // 2. [modules.gpu] sub-table
+        let toml_modules_gpu = r#"
+        [modules.gpu]
+        type = "all"
+        "#;
+        let cfg2 = Config::from_toml(toml_modules_gpu).unwrap();
+        assert_eq!(cfg2.gpu.r#type, "all");
+        let gpu_mod2 = cfg2.modules.iter().find(|m| m.name == "gpu").unwrap();
+        assert_eq!(gpu_mod2.gpu_type.as_deref(), Some("all"));
+
+        // 3. [[modules]] table with name = "gpu" and type = "igpu"
+        let toml_item_type = r#"
+        [[modules]]
+        name = "gpu"
+        type = "igpu"
+        "#;
+        let cfg3 = Config::from_toml(toml_item_type).unwrap();
+        assert_eq!(cfg3.modules[0].name, "gpu");
+        assert_eq!(cfg3.modules[0].gpu_type.as_deref(), Some("igpu"));
+
+        // 4. [[modules]] table with name = "gpu" and gpu_type = "dgpu"
+        let toml_item_gpu_type = r#"
+        [[modules]]
+        name = "gpu"
+        gpu_type = "dgpu"
+        "#;
+        let cfg4 = Config::from_toml(toml_item_gpu_type).unwrap();
+        assert_eq!(cfg4.modules[0].name, "gpu");
+        assert_eq!(cfg4.modules[0].gpu_type.as_deref(), Some("dgpu"));
+
+        // 5. Dedicated dgpu and igpu modules
+        let toml_dedicated = r#"
+        [[modules]]
+        name = "igpu"
+        label = "Internal Graphics"
+
+        [[modules]]
+        name = "dgpu"
+        label = "Dedicated Graphics"
+        "#;
+        let cfg5 = Config::from_toml(toml_dedicated).unwrap();
+        assert_eq!(cfg5.modules.len(), 2);
+        assert_eq!(cfg5.modules[0].name, "igpu");
+        assert_eq!(cfg5.modules[0].label.as_deref(), Some("Internal Graphics"));
+        assert_eq!(cfg5.modules[1].name, "dgpu");
+        assert_eq!(cfg5.modules[1].label.as_deref(), Some("Dedicated Graphics"));
+
+        // 6. [[modules]] followed by [modules.gpu]
+        let toml_modules_gpu_nested = r#"
+        [[modules]]
+        name = "os"
+
+        [[modules]]
+        name = "gpu"
+
+        [modules.gpu]
+        type = "igpu"
+        "#;
+        let cfg6 = Config::from_toml(toml_modules_gpu_nested).unwrap();
+        assert_eq!(cfg6.modules.len(), 2);
+        assert_eq!(cfg6.modules[0].name, "os");
+        assert_eq!(cfg6.modules[1].name, "gpu");
+        assert_eq!(cfg6.modules[1].gpu_type.as_deref(), Some("igpu"));
+
+        // 7. filter and display aliases
+        let toml_filter = r#"
+        [[modules]]
+        name = "gpu"
+        filter = "all"
+        "#;
+        let cfg7 = Config::from_toml(toml_filter).unwrap();
+        assert_eq!(cfg7.modules[0].gpu_type.as_deref(), Some("all"));
+
+        let toml_display = r#"
+        [[modules]]
+        name = "gpu"
+        display = "discrete"
+        "#;
+        let cfg8 = Config::from_toml(toml_display).unwrap();
+        assert_eq!(cfg8.modules[0].gpu_type.as_deref(), Some("discrete"));
+
+        // 8. Icons for dgpu and igpu
+        assert_eq!(default_icon_for_module("gpu"), Some("󰢮"));
+        assert_eq!(default_icon_for_module("dgpu"), Some("󰢮"));
+        assert_eq!(default_icon_for_module("igpu"), Some("󰢮"));
     }
 }

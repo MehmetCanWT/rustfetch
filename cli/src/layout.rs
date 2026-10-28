@@ -398,7 +398,7 @@ pub fn wrap_in_box_bounded(
         .unwrap_or(0);
 
     if let Some(t) = title.filter(|t| !t.is_empty()) {
-        max_w = max_w.max(UnicodeWidthStr::width(strip_ansi(t).as_str()) + 4);
+        max_w = max_w.max(strip_ansi_width(t) + 4);
     }
     for line in lines {
         if line.starts_with("---DIVIDER:") {
@@ -406,7 +406,7 @@ pub fn wrap_in_box_bounded(
                 .strip_prefix("---DIVIDER:")
                 .unwrap_or("")
                 .trim_end_matches("---");
-            let st_w = UnicodeWidthStr::width(strip_ansi(section_title).as_str());
+            let st_w = strip_ansi_width(section_title);
             max_w = max_w.max(st_w + 4);
         }
     }
@@ -433,8 +433,7 @@ pub fn wrap_in_box_bounded(
 
     // Top border line
     if let Some(t) = title.filter(|t| !t.is_empty()) {
-        let title_clean = strip_ansi(t);
-        let title_w = UnicodeWidthStr::width(title_clean.as_str());
+        let title_w = strip_ansi_width(t);
         let top_rep = chars.top.as_str();
         if inner_w > title_w + 4 {
             let remain = inner_w - (title_w + 4);
@@ -481,8 +480,7 @@ pub fn wrap_in_box_bounded(
                 .strip_prefix("---DIVIDER:")
                 .unwrap_or("")
                 .trim_end_matches("---");
-            let st_clean = strip_ansi(section_title);
-            let st_w = UnicodeWidthStr::width(st_clean.as_str());
+            let st_w = strip_ansi_width(section_title);
             let div_rep = chars.divider.as_str();
             if inner_w > st_w + 2 {
                 let remain = inner_w - (st_w + 2);
@@ -576,7 +574,7 @@ pub fn build_right_lines_bounded(
             } else {
                 mcw
             };
-            if UnicodeWidthStr::width(h) > max_h && max_h > 0 {
+            if strip_ansi_width(h) > max_h && max_h > 0 {
                 truncate_ansi(h, max_h)
             } else {
                 h.to_string()
@@ -634,8 +632,7 @@ pub fn build_right_lines_bounded(
                         .strip_prefix("---DIVIDER:")
                         .unwrap_or("")
                         .trim_end_matches("---");
-                    let st_clean = strip_ansi(section_title);
-                    let st_w = UnicodeWidthStr::width(st_clean.as_str());
+                    let st_w = strip_ansi_width(section_title);
                     if st_w > 0 && content_w > st_w + 4 {
                         let remain = content_w.saturating_sub(st_w + 4);
                         format!(
@@ -668,7 +665,7 @@ pub fn build_right_lines_bounded(
         // Compose non-background border images first (frames, left, right, top, bottom)
         for img in opts.border_images {
             if !img.is_background() {
-                let expanded = shellexpand::tilde(&img.path);
+                let expanded = crate::tilde_expand(&img.path);
                 let target_w = img.width.unwrap_or(24);
                 if let Some(rasterized) = rustfetch_render::render_halfblock_ex(
                     expanded.as_ref(),
@@ -685,7 +682,7 @@ pub fn build_right_lines_bounded(
         // For background images, if not using Kitty (e.g. halfblock/fallback), apply TrueColor ANSI background
         for img in opts.border_images {
             if img.is_background() && !should_use_kitty(img) {
-                let expanded = shellexpand::tilde(&img.path);
+                let expanded = crate::tilde_expand(&img.path);
                 let card_w = right_lines
                     .iter()
                     .map(|l| strip_ansi_width(l))
@@ -725,7 +722,7 @@ pub fn emit_kitty_background(
     card_w: usize,
     card_h: usize,
 ) -> Option<usize> {
-    let expanded = shellexpand::tilde(&img_config.path).to_string();
+    let expanded = crate::tilde_expand(&img_config.path).to_string();
     let z_index = img_config.effective_z_index();
 
     let opts = rustfetch_render::BackgroundOptions {
@@ -1301,19 +1298,20 @@ pub fn strip_ansi(s: &str) -> String {
                     clean.push(ch);
                 }
             }
-            State::Escape => {
-                match ch {
-                    '[' => state = State::Csi,
-                    ']' => state = State::Osc,
-                    '_' | 'P' | '^' => state = State::Apc,
-                    _ => {
-                        // 2-byte escape sequence (e.g. \x1b7, \x1b8, \x1bM, \x1bc)
-                        state = State::Ground;
-                    }
+            State::Escape => match ch {
+                '\x1b' => {}
+                '[' => state = State::Csi,
+                ']' => state = State::Osc,
+                '_' | 'P' | '^' => state = State::Apc,
+                _ => {
+                    // 2-byte escape sequence (e.g. \x1b7, \x1b8, \x1bM, \x1bc)
+                    state = State::Ground;
                 }
-            }
+            },
             State::Csi => {
-                if ('@'..='~').contains(&ch) {
+                if ch == '\x1b' {
+                    state = State::Escape;
+                } else if ('@'..='~').contains(&ch) {
                     state = State::Ground;
                 }
             }
@@ -1339,7 +1337,63 @@ pub fn strip_ansi(s: &str) -> String {
 }
 
 pub fn strip_ansi_width(s: &str) -> usize {
-    UnicodeWidthStr::width(strip_ansi(s).as_str())
+    enum State {
+        Ground,
+        Escape,
+        Csi,
+        Osc,
+        Apc,
+        OscEsc,
+    }
+
+    let mut state = State::Ground;
+    let mut width = 0;
+
+    for ch in s.chars() {
+        match state {
+            State::Ground => {
+                if ch == '\x1b' {
+                    state = State::Escape;
+                } else {
+                    width += UnicodeWidthChar::width(ch).unwrap_or(0);
+                }
+            }
+            State::Escape => match ch {
+                '\x1b' => {}
+                '[' => state = State::Csi,
+                ']' => state = State::Osc,
+                '_' | 'P' | '^' => state = State::Apc,
+                _ => {
+                    // 2-byte escape sequence (e.g. \x1b7, \x1b8, \x1bM, \x1bc)
+                    state = State::Ground;
+                }
+            },
+            State::Csi => {
+                if ch == '\x1b' {
+                    state = State::Escape;
+                } else if ('@'..='~').contains(&ch) {
+                    state = State::Ground;
+                }
+            }
+            State::Osc | State::Apc => {
+                if ch == '\x07' {
+                    state = State::Ground;
+                } else if ch == '\x1b' {
+                    state = State::OscEsc;
+                }
+            }
+            State::OscEsc => {
+                if ch == '\\' {
+                    state = State::Ground;
+                } else if ch == '\x1b' {
+                    // repeat escape
+                } else {
+                    state = State::Osc;
+                }
+            }
+        }
+    }
+    width
 }
 
 #[cfg(test)]
@@ -1360,12 +1414,32 @@ mod tests {
 
     #[test]
     fn test_strip_ansi_width() {
+        assert_eq!(strip_ansi_width(""), 0);
+        assert_eq!(strip_ansi_width("hello world"), 11);
         assert_eq!(strip_ansi_width("\x1b[31mhello\x1b[0m"), 5);
+        assert_eq!(strip_ansi_width("\x1b[38;2;255;100;50mRGB text\x1b[0m"), 8);
         assert_eq!(strip_ansi_width("\x1b7hello\x1b8"), 5);
         assert_eq!(strip_ansi_width("\x1b_Ga=T,f=100;ABCDEF\x1b\\world"), 5);
         assert_eq!(
             strip_ansi_width("\x1b]8;;https://example.com\x07link\x1b]8;;\x07"),
             4
+        );
+        assert_eq!(
+            strip_ansi_width("\x1b]0;terminal title\x1b\\window content"),
+            14
+        );
+        assert_eq!(strip_ansi_width("🦀 rust"), 7);
+        assert_eq!(strip_ansi_width("\x1b[32m你好世界\x1b[0m"), 8);
+        assert_eq!(strip_ansi_width("\x1b["), 0);
+        assert_eq!(strip_ansi_width("\x1b\x1b[31mhello\x1b[0m"), 5);
+        assert_eq!(strip_ansi_width("\x1b[31\x1b[32mhello\x1b[0m"), 5);
+        assert_eq!(
+            strip_ansi_width("\x1bPtmux;\x1b\x1b_Ga=d,d=a\x1b\x1b\\\x1b\\"),
+            0
+        );
+        assert_eq!(
+            strip_ansi_width("\x1bPtmux;\x1b\x1bPq\"1;1;2;1\x1b\x1b\\\x1b\\"),
+            0
         );
     }
 

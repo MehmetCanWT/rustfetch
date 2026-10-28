@@ -9,6 +9,10 @@ impl Module for Wifi {
         "wifi"
     }
 
+    fn is_slow(&self) -> bool {
+        true
+    }
+
     fn detect(&self) -> Option<Info> {
         let details = get_wifi_details()?;
         let mut parts = Vec::new();

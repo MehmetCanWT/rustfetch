@@ -8,9 +8,19 @@ pub struct Cache {
 
 impl Cache {
     pub fn cache_dir() -> PathBuf {
-        let base_dir = std::env::var("XDG_CACHE_HOME")
-            .unwrap_or_else(|_| format!("{}/.cache", std::env::var("HOME").unwrap_or_default()));
-        PathBuf::from(base_dir).join("rustfetch")
+        if let Ok(xdg) = std::env::var("XDG_CACHE_HOME") {
+            let trimmed = xdg.trim();
+            if !trimmed.is_empty() {
+                return PathBuf::from(trimmed).join("rustfetch");
+            }
+        }
+        if let Ok(home) = std::env::var("HOME") {
+            let trimmed = home.trim();
+            if !trimmed.is_empty() {
+                return PathBuf::from(trimmed).join(".cache").join("rustfetch");
+            }
+        }
+        std::env::temp_dir().join("rustfetch-cache")
     }
 
     pub fn clear_all() -> usize {
@@ -58,9 +68,13 @@ impl Cache {
     pub fn write(&self, value: &str) {
         // Write-then-rename prevents another RustFetch process from observing a
         // partially written cache entry.
+        let nanos = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
         let temp_path = self
             .dir
-            .with_extension(format!("{}.tmp", std::process::id()));
+            .with_extension(format!("{}-{}.tmp", std::process::id(), nanos));
         if fs::write(&temp_path, value).is_ok() && fs::rename(&temp_path, &self.dir).is_err() {
             let _ = fs::remove_file(temp_path);
         }
@@ -84,10 +98,17 @@ mod tests {
         cache.write("second");
 
         assert_eq!(fs::read_to_string(&cache.dir).unwrap(), "second");
-        assert!(!cache
-            .dir
-            .with_extension(format!("{}.tmp", std::process::id()))
-            .exists());
+        // Ensure no leftover temporary files remain in root
+        let tmp_files: Vec<_> = fs::read_dir(&root)
+            .unwrap()
+            .flatten()
+            .filter(|e| e.path().to_string_lossy().contains(".tmp"))
+            .collect();
+        assert!(
+            tmp_files.is_empty(),
+            "Leftover temp files found: {:?}",
+            tmp_files
+        );
         fs::remove_dir_all(root).unwrap();
     }
 }

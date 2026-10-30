@@ -355,18 +355,6 @@ pub fn truncate_ansi(s: &str, max_width: usize) -> String {
     out
 }
 
-#[allow(dead_code)]
-pub fn wrap_in_box_advanced(
-    lines: &[String],
-    style: Option<&str>,
-    color: Option<&str>,
-    custom_chars: Option<&rustfetch_core::BorderCharsConfig>,
-    title: Option<&str>,
-    box_padding: usize,
-) -> Vec<String> {
-    wrap_in_box_bounded(lines, style, color, custom_chars, title, box_padding, None)
-}
-
 pub fn wrap_in_box_bounded(
     lines: &[String],
     style: Option<&str>,
@@ -646,16 +634,14 @@ pub fn build_right_lines_bounded(
                     }
                 } else if line == "---DIVIDER---" {
                     String::new()
-                } else {
-                    if let Some(mcw) = max_card_width {
-                        if strip_ansi_width(&line) > mcw {
-                            truncate_ansi(&line, mcw)
-                        } else {
-                            line
-                        }
+                } else if let Some(mcw) = max_card_width {
+                    if strip_ansi_width(&line) > mcw {
+                        truncate_ansi(&line, mcw)
                     } else {
                         line
                     }
+                } else {
+                    line
                 }
             })
             .collect();
@@ -1516,7 +1502,7 @@ mod tests {
     #[test]
     fn test_wrap_in_box() {
         let lines = vec!["Hello".to_string(), "World!".to_string()];
-        let boxed = wrap_in_box_advanced(&lines, None, None, None, None, 1);
+        let boxed = wrap_in_box_bounded(&lines, None, None, None, None, 1, None);
         assert_eq!(boxed.len(), 4);
         assert!(boxed[0].starts_with('╭'));
         assert!(boxed[0].ends_with('╮'));
@@ -1534,8 +1520,15 @@ mod tests {
             "---DIVIDER---".to_string(),
             "CPU: 8 cores".to_string(),
         ];
-        let boxed =
-            wrap_in_box_advanced(&lines, Some("double"), Some("cyan"), None, Some("Specs"), 1);
+        let boxed = wrap_in_box_bounded(
+            &lines,
+            Some("double"),
+            Some("cyan"),
+            None,
+            Some("Specs"),
+            1,
+            None,
+        );
         assert_eq!(boxed.len(), 6);
         assert!(boxed[0].contains("Specs"));
         assert!(boxed[0].contains('╔'));

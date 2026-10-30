@@ -2,6 +2,7 @@ pub mod ascii;
 pub mod cache;
 pub mod config;
 pub mod modules;
+pub mod sha256;
 
 pub use ascii::apply_neofetch_colors;
 pub use config::{

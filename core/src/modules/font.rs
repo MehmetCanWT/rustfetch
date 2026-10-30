@@ -29,21 +29,34 @@ impl Module for FontModule {
             }
         }
 
-        if let Ok(content) = fs::read_to_string(format!("{config_dir}/gtk-3.0/settings.ini")) {
-            for line in content.lines() {
-                if let Some(font) = line.strip_prefix("gtk-font-name=") {
-                    let cleaned = font
-                        .replace(',', " ")
-                        .split_whitespace()
-                        .collect::<Vec<_>>()
-                        .join(" ");
-                    if !cleaned.is_empty() {
-                        return Some(Info::new("Font", format!("{cleaned} [GTK]")));
+        for gtk_ver in ["gtk-4.0", "gtk-3.0"] {
+            if let Ok(content) = fs::read_to_string(format!("{config_dir}/{gtk_ver}/settings.ini"))
+            {
+                for line in content.lines() {
+                    if let Some(font) = line.strip_prefix("gtk-font-name=") {
+                        let cleaned = font
+                            .replace(',', " ")
+                            .split_whitespace()
+                            .collect::<Vec<_>>()
+                            .join(" ");
+                        if !cleaned.is_empty() {
+                            return Some(Info::new("Font", format!("{cleaned} [GTK]")));
+                        }
                     }
                 }
             }
         }
 
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_font_module_name() {
+        assert_eq!(FontModule.name(), "font");
     }
 }

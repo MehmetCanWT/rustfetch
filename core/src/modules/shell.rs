@@ -9,8 +9,21 @@ impl Module for Shell {
     }
 
     fn detect(&self) -> Option<Info> {
-        let path = std::env::var("SHELL").ok()?;
-        let shell = parse_shell(&path)?;
+        let shell = if let Ok(path) = std::env::var("SHELL") {
+            parse_shell(&path)
+        } else {
+            None
+        };
+        let shell = shell.or_else(|| {
+            let ppid = std::fs::read_to_string("/proc/self/status")
+                .ok()?
+                .lines()
+                .find_map(|l| l.strip_prefix("PPid:"))
+                .and_then(|p| p.trim().parse::<u32>().ok())?;
+            let comm = std::fs::read_to_string(format!("/proc/{ppid}/comm")).ok()?;
+            let trimmed = comm.trim();
+            (!trimmed.is_empty()).then(|| trimmed.to_string())
+        })?;
         Some(Info::new("Shell", shell))
     }
 }

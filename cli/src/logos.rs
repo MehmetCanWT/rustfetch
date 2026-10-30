@@ -96,6 +96,7 @@ pub fn list_available_logos() -> &'static [(&'static str, &'static str)] {
         ("cat", "RustFetch Cat Mascot (also: cat_small)"),
         ("bengal", "Bengal Cat (v0.1.2 Codename Mascot)"),
         ("maine_coon", "Maine Coon Cat (v0.1.3 Codename Mascot)"),
+        ("siamese", "Siamese Cat (v0.1.4 Codename Mascot)"),
         (
             "turkish_van",
             "Turkish Van Cat — Heterochromia Eyes (v0.1.0 Mascot)",
@@ -230,10 +231,11 @@ pub fn get_logo(distro: &str) -> Logo {
         bengal_cat()
     } else if lower.contains("maine_coon") || lower.contains("maine coon") || lower == "mainecoon" {
         maine_coon_cat()
+    } else if lower.contains("siamese") || lower == "siamese_cat" {
+        siamese_cat()
     } else if lower == "cat"
         || lower == "kitty_cat"
         || lower == "kedi"
-        || lower == "siamese"
         || lower == "ragdoll"
         || lower == "anatolian"
     {
@@ -1498,6 +1500,26 @@ fn maine_coon_cat() -> Logo {
         lines,
         color: CAT_AMBER,
         colors: vec![CAT_AMBER, UBUNTU_ORANGE, CAT_EMERALD],
+        width,
+    }
+}
+
+fn siamese_cat() -> Logo {
+    let lines = vec![
+        r##"         $1/\_____/\"##,
+        r##"        $1/  $3*   *  $1\"##,
+        r##"       $1( ==  $2^  $1== )"##,
+        r##"        $1)   $2.-.   $1("##,
+        r##"       $1(   $2/   \   $1)"##,
+        r##"      $1( (  )   (  ) )"##,
+        r##"     $1(__(__)___(__)__)"##,
+        r##"       $2"Siamese" v0.1.4"##,
+    ];
+    let width = compute_logo_width(&lines);
+    Logo {
+        lines,
+        color: CAT_CREAM,
+        colors: vec![CAT_CREAM, UBUNTU_ORANGE, ARCH_LIGHT],
         width,
     }
 }

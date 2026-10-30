@@ -32,7 +32,7 @@ pub fn print_kitty_ex(
     let chunks: Vec<&str> = encoded
         .as_bytes()
         .chunks(4096)
-        .map(|c| std::str::from_utf8(c).unwrap())
+        .filter_map(|c| std::str::from_utf8(c).ok())
         .collect();
 
     for (i, chunk) in chunks.iter().enumerate() {
@@ -79,7 +79,7 @@ pub fn print_kitty_animation(frames: &[KittyFrame], width: u32, height: u32, col
         let chunks: Vec<&str> = encoded
             .as_bytes()
             .chunks(4096)
-            .map(|c| std::str::from_utf8(c).unwrap())
+            .filter_map(|c| std::str::from_utf8(c).ok())
             .collect();
 
         for (chunk_idx, chunk) in chunks.iter().enumerate() {

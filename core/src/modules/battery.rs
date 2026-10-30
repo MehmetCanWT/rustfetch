@@ -11,16 +11,31 @@ impl Module for BatteryModule {
 
     fn detect(&self) -> Option<Info> {
         let dir = fs::read_dir("/sys/class/power_supply").ok()?;
+        let mut batteries = Vec::new();
         for entry in dir.flatten() {
             let path = entry.path();
             if fs::read_to_string(path.join("type"))
                 .is_ok_and(|t| t.trim().eq_ignore_ascii_case("Battery"))
             {
                 let name = entry.file_name().to_string_lossy().into_owned();
-                return detect_from_dir(&path, &name);
+                if let Some(info) = detect_from_dir(&path, &name) {
+                    batteries.push(info);
+                }
             }
         }
-        None
+        if batteries.is_empty() {
+            None
+        } else if batteries.len() == 1 {
+            batteries.pop()
+        } else {
+            let label = "Battery".to_string();
+            let value = batteries
+                .into_iter()
+                .map(|b| format!("{}: {}", b.label, b.value))
+                .collect::<Vec<_>>()
+                .join(" | ");
+            Some(Info::new(label, value))
+        }
     }
 }
 

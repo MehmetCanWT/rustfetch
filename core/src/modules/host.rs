@@ -22,6 +22,12 @@ pub fn read_host() -> Option<String> {
         .ok();
 
     if vendor.is_none() && product.is_none() {
+        if let Ok(dt_model) = std::fs::read_to_string("/sys/firmware/devicetree/base/model") {
+            let clean = dt_model.trim_matches('\0').trim();
+            if !clean.is_empty() {
+                return Some(clean.to_string());
+            }
+        }
         return None;
     }
 

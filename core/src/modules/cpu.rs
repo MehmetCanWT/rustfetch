@@ -16,24 +16,40 @@ impl Module for Cpu {
 
 pub fn parse_cpuinfo(content: &str) -> Option<String> {
     let mut model_name: Option<String> = None;
+    let mut fallback_model: Option<String> = None;
     let mut core_count: usize = 0;
 
     for line in content.lines() {
         if let Some((key, val)) = line.split_once(':') {
-            match key.trim() {
-                "model name" if model_name.is_none() => {
+            let key = key.trim();
+            if key.eq_ignore_ascii_case("model name") {
+                if model_name.is_none() {
                     let cleaned = val.split_whitespace().collect::<Vec<_>>().join(" ");
                     if !cleaned.is_empty() {
                         model_name = Some(cleaned);
                     }
                 }
-                "processor" => core_count += 1,
-                _ => {}
+            } else if key.eq_ignore_ascii_case("Hardware") || key.eq_ignore_ascii_case("Model") {
+                if fallback_model.is_none() {
+                    let cleaned = val.split_whitespace().collect::<Vec<_>>().join(" ");
+                    if !cleaned.is_empty() {
+                        fallback_model = Some(cleaned);
+                    }
+                }
+            } else if key.eq_ignore_ascii_case("processor") {
+                if val.trim().parse::<usize>().is_ok() {
+                    core_count += 1;
+                } else if fallback_model.is_none() {
+                    let cleaned = val.split_whitespace().collect::<Vec<_>>().join(" ");
+                    if !cleaned.is_empty() {
+                        fallback_model = Some(cleaned);
+                    }
+                }
             }
         }
     }
 
-    let model = model_name?;
+    let model = model_name.or(fallback_model)?;
     if core_count == 0 {
         return None;
     }
@@ -128,6 +144,16 @@ power management: ts ttp tm hwpstate cpb eff_freq_ro [13] [14]
         assert_eq!(parse_cpuinfo("unknown: field"), None);
         assert_eq!(parse_cpuinfo("processor: 0"), None);
         assert_eq!(parse_cpuinfo("model name: Intel Core i5"), None);
+    }
+
+    #[test]
+    fn test_parse_cpuinfo_arm() {
+        let arm_sample =
+            "processor : 0\nBogoMIPS : 108.0\nprocessor : 1\nModel : Raspberry Pi 4 Model B\n";
+        assert_eq!(
+            parse_cpuinfo(arm_sample),
+            Some("Raspberry Pi 4 Model B (2)".to_string())
+        );
     }
 
     #[test]

@@ -1,13 +1,25 @@
+mod image_picker;
+mod json_export;
 mod layout;
 mod logos;
+mod shell_hook;
 mod tools;
+
+pub use image_picker::{
+    filter_candidate_images, get_image_color_and_palette, pick_random_image, tilde_expand,
+    update_recent_history,
+};
+pub use json_export::extract_percentage;
+pub use shell_hook::{
+    get_shell_target_file, install_shell_hook, shell_init_script, strip_rustfetch_hook,
+    uninstall_shell_hook,
+};
 
 use clap::{CommandFactory, Parser};
 use clap_complete::{generate, Shell};
 use rustfetch_core::config::Config;
 use rustfetch_core::modules::{all_modules, module_by_name, module_from_config};
 use rustfetch_core::{default_icon_for_module, detect_all, Module};
-use serde::Serialize;
 use std::io::Write;
 
 use layout::{color_code, InfoLine, LogoBlock};
@@ -272,237 +284,6 @@ fn resolve_distro_logo(distro_name: &str, padding: usize) -> logos::Logo {
         }
     }
     logo
-}
-
-fn shell_init_script(shell: &str) -> Option<&'static str> {
-    match shell.to_lowercase().as_str() {
-        "bash" => Some(
-            r#"# RustFetch — Shell startup integration
-if [[ $- == *i* ]]; then
-    _rustfetch_init_hist=""
-    _rustfetch_last_size="$(stty size 2>/dev/null)"
-    _rustfetch_prompt_cmd() {
-        if [ -z "$_rustfetch_init_hist" ]; then
-            _rustfetch_init_hist=$HISTCMD
-        elif [ "$HISTCMD" -gt "$_rustfetch_init_hist" ]; then
-            trap - WINCH
-        fi
-    }
-    PROMPT_COMMAND+=(_rustfetch_prompt_cmd)
-    _rustfetch_on_resize() {
-        if [ -z "$_rustfetch_init_hist" ] || [ "$HISTCMD" -le "$_rustfetch_init_hist" ]; then
-            if [ -z "$READLINE_LINE" ]; then
-                local cur_size
-                while :; do
-                    cur_size="$(stty size 2>/dev/null)"
-                    if [ -z "$cur_size" ] || [ "$cur_size" = "$_rustfetch_last_size" ]; then
-                        break
-                    fi
-                    _rustfetch_last_size="$cur_size"
-                    rustfetch --keep-logo --no-update-check
-                done
-                local _rf_ps1="${PS1@P}"
-                printf '%s' "${_rf_ps1//[$'\001\002']/}"
-            fi
-        else
-            trap - WINCH
-        fi
-    }
-    trap '_rustfetch_on_resize' WINCH
-    rustfetch
-fi
-"#,
-        ),
-        "zsh" => Some(
-            r#"# RustFetch — Shell startup integration
-if [[ -o interactive ]]; then
-    _rustfetch_startup=1
-    _rustfetch_last_size="$(stty size 2>/dev/null)"
-    _rustfetch_preexec() {
-        _rustfetch_startup=0
-    }
-    autoload -Uz add-zsh-hook 2>/dev/null && add-zsh-hook preexec _rustfetch_preexec 2>/dev/null
-    TRAPWINCH() {
-        if [[ "$_rustfetch_startup" == "1" && -z "$BUFFER" ]]; then
-            local cur_size
-            while true; do
-                cur_size="$(stty size 2>/dev/null)"
-                if [[ -z "$cur_size" || "$cur_size" == "$_rustfetch_last_size" ]]; then
-                    break
-                fi
-                _rustfetch_last_size="$cur_size"
-                rustfetch --keep-logo --no-update-check
-            done
-            zle && zle reset-prompt 2>/dev/null
-        fi
-    }
-    rustfetch
-fi
-"#,
-        ),
-        "fish" => Some(
-            r#"# RustFetch — Shell startup integration
-if status is-interactive
-    set -g _rustfetch_startup 1
-    set -g _rustfetch_last_size (stty size 2>/dev/null)
-    function _rustfetch_preexec --on-event fish_preexec
-        set -g _rustfetch_startup 0
-    end
-    function _rustfetch_on_resize --on-signal WINCH
-        if test "$_rustfetch_startup" = "1" -a -z (commandline)
-            set -l cur_size (stty size 2>/dev/null)
-            if test -n "$cur_size" -a "$cur_size" != "$_rustfetch_last_size"
-                set -g _rustfetch_last_size "$cur_size"
-                rustfetch --keep-logo --no-update-check
-                commandline -f repaint 2>/dev/null
-            end
-        end
-    end
-    rustfetch
-end
-"#,
-        ),
-        _ => None,
-    }
-}
-
-fn get_shell_target_file(home: &std::path::Path) -> (&'static str, std::path::PathBuf) {
-    let shell_path = std::env::var("SHELL").unwrap_or_default();
-    let is_zsh = shell_path.ends_with("/zsh") || shell_path == "zsh";
-    let is_fish = shell_path.ends_with("/fish") || shell_path == "fish";
-
-    if is_zsh {
-        ("zsh", home.join(".zshrc"))
-    } else if is_fish {
-        ("fish", home.join(".config/fish/config.fish"))
-    } else {
-        ("bash", home.join(".bashrc"))
-    }
-}
-
-pub(crate) fn strip_rustfetch_hook(content: &str) -> String {
-    let mut result = Vec::new();
-    let mut in_rustfetch_block = false;
-    let mut block_depth = 0;
-
-    for line in content.lines() {
-        let trimmed = line.trim();
-
-        if trimmed.starts_with("# RustFetch") {
-            in_rustfetch_block = true;
-            block_depth = 0;
-            continue;
-        }
-
-        if in_rustfetch_block {
-            if trimmed.starts_with("if ") || trimmed.starts_with("function ") {
-                block_depth += 1;
-            }
-            if trimmed == "fi" || trimmed == "end" || (block_depth > 0 && trimmed.ends_with("; fi"))
-            {
-                if block_depth > 0 {
-                    block_depth -= 1;
-                }
-                if block_depth == 0 {
-                    in_rustfetch_block = false;
-                    continue;
-                }
-            }
-            continue;
-        }
-
-        if trimmed.contains("_rustfetch")
-            || trimmed.contains("TRAPWINCH")
-            || trimmed == "rustfetch"
-            || trimmed == "rfetch"
-        {
-            continue;
-        }
-
-        result.push(line);
-    }
-
-    let mut cleaned_lines = Vec::new();
-    let mut prev_empty = false;
-    for line in result {
-        let is_empty = line.trim().is_empty();
-        if is_empty && prev_empty {
-            continue;
-        }
-        cleaned_lines.push(line);
-        prev_empty = is_empty;
-    }
-
-    let mut output = cleaned_lines.join("\n");
-    if !output.is_empty() && !output.ends_with('\n') {
-        output.push('\n');
-    }
-    output
-}
-
-fn install_shell_hook() {
-    let home = match std::env::var("HOME") {
-        Ok(h) => std::path::PathBuf::from(h),
-        Err(_) => {
-            eprintln!("Error: HOME environment variable not set.");
-            return;
-        }
-    };
-
-    let (shell_name, target_file) = get_shell_target_file(&home);
-
-    let script = match shell_init_script(shell_name) {
-        Some(s) => s,
-        None => return,
-    };
-
-    let existing = std::fs::read_to_string(&target_file).unwrap_or_default();
-    let cleaned = strip_rustfetch_hook(&existing);
-
-    let mut new_content = cleaned;
-    if !new_content.is_empty() && !new_content.ends_with('\n') {
-        new_content.push('\n');
-    }
-    new_content.push_str(script);
-
-    if let Some(parent) = target_file.parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
-
-    match std::fs::write(&target_file, new_content) {
-        Ok(()) => println!(
-            "Successfully installed RustFetch startup hook to {}",
-            target_file.display()
-        ),
-        Err(e) => eprintln!("Failed to write to {}: {e}", target_file.display()),
-    }
-}
-
-fn uninstall_shell_hook() {
-    let home = match std::env::var("HOME") {
-        Ok(h) => std::path::PathBuf::from(h),
-        Err(_) => {
-            eprintln!("Error: HOME environment variable not set.");
-            return;
-        }
-    };
-
-    let (_, target_file) = get_shell_target_file(&home);
-    if !target_file.exists() {
-        println!("No shell configuration found at {}", target_file.display());
-        return;
-    }
-
-    let existing = std::fs::read_to_string(&target_file).unwrap_or_default();
-    let cleaned = strip_rustfetch_hook(&existing);
-
-    match std::fs::write(&target_file, cleaned) {
-        Ok(()) => println!(
-            "Successfully removed RustFetch hook from {}",
-            target_file.display()
-        ),
-        Err(e) => eprintln!("Failed to write to {}: {e}", target_file.display()),
-    }
 }
 
 pub fn run() {
@@ -1206,9 +987,7 @@ fn run_once_inner(
             {
                 (term_rows / 2).clamp(8, 18)
             } else {
-                card_rows
-                    .clamp(16, 23)
-                    .min(term_rows.saturating_sub(3).max(6))
+                term_rows.saturating_sub(3).max(card_rows).clamp(16, 30)
             };
             let max_rows_val = cli
                 .height
@@ -1416,74 +1195,9 @@ fn run_once_inner(
     end_keep_logo_frame(cli.keep_logo);
 }
 
-#[derive(Serialize)]
-struct JsonModuleOutput {
-    name: String,
-    label: String,
-    value: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    icon: Option<String>,
-}
+use json_export::run_json;
 
-fn run_json(
-    config: &Config,
-    modules: &[Box<dyn Module>],
-    configs: &[rustfetch_core::config::ModuleConfig],
-) {
-    let results = detect_all(modules);
-    let mut outputs = Vec::new();
-
-    for (result, mc) in results.into_iter().zip(configs.iter()) {
-        if mc.name == "break" || mc.name == "divider" {
-            continue;
-        }
-        let (label, mut value) = if mc.name == "custom" {
-            (
-                mc.label.clone().unwrap_or_else(|| "custom".to_string()),
-                mc.value.clone().unwrap_or_default(),
-            )
-        } else if let Some(info) = result {
-            (mc.label.clone().unwrap_or(info.label), info.value)
-        } else {
-            continue;
-        };
-
-        if let Some(fmt) = &mc.format {
-            value = fmt.replace("{value}", &value).replace("{}", &value);
-        }
-
-        let icon = if config.general.icons {
-            if let Some(user_icon) = &mc.icon {
-                Some(user_icon.clone())
-            } else if mc.name == "os" {
-                Some(rustfetch_core::distro_icon(&value).to_string())
-            } else {
-                default_icon_for_module(&mc.name).map(str::to_string)
-            }
-        } else {
-            None
-        };
-
-        outputs.push(JsonModuleOutput {
-            name: mc.name.clone(),
-            label,
-            value,
-            icon,
-        });
-    }
-
-    if let Ok(json_str) = serde_json::to_string_pretty(&outputs) {
-        println!("{json_str}");
-    }
-}
-
-#[derive(Serialize)]
-struct WaybarOutput {
-    text: String,
-    tooltip: String,
-    class: &'static str,
-}
-
+#[cfg(test)]
 fn generate_waybar_json(
     config: &Config,
     modules: &[Box<dyn Module>],
@@ -1491,67 +1205,7 @@ fn generate_waybar_json(
 ) -> String {
     let info_lines = gather_info_lines(config, modules, configs, None, None);
     let header = build_header();
-    let render_opts = layout::RenderOptions {
-        header: header.as_deref(),
-        header_color: None,
-        separator: &config.general.separator,
-        padding: 0,
-        center: false,
-        border: false,
-        border_style: None,
-        border_color: None,
-        border_chars: None,
-        border_title: None,
-        box_padding: 0,
-        palette_lines: None,
-        palette_position: "none",
-        icon_only: false,
-        key_type: None,
-        border_image: None,
-        border_image_position: "none",
-        border_images: &[],
-        logo_position: "none",
-    };
-
-    let right_lines = layout::build_right_lines(&info_lines, &render_opts);
-    let tooltip_lines: Vec<String> = right_lines
-        .into_iter()
-        .map(|l| layout::strip_ansi(&l))
-        .collect();
-    let tooltip = tooltip_lines.join("\n").trim().to_string();
-
-    let raw_text = if let Some(os_line) = info_lines
-        .iter()
-        .find(|l| l.label.eq_ignore_ascii_case("os"))
-    {
-        let clean_val = layout::strip_ansi(&os_line.value);
-        if let Some(icon) = &os_line.icon {
-            format!("{icon} {clean_val}")
-        } else {
-            clean_val
-        }
-    } else if let Some(first_line) = info_lines
-        .iter()
-        .find(|l| !l.value.is_empty() && !l.label.starts_with("---DIVIDER"))
-    {
-        let clean_val = layout::strip_ansi(&first_line.value);
-        if let Some(icon) = &first_line.icon {
-            format!("{icon} {clean_val}")
-        } else {
-            clean_val
-        }
-    } else {
-        "rustfetch".to_string()
-    };
-    let text = layout::strip_ansi(&raw_text).trim().to_string();
-
-    let output = WaybarOutput {
-        text,
-        tooltip,
-        class: "rustfetch",
-    };
-
-    serde_json::to_string(&output).unwrap_or_default()
+    json_export::generate_waybar_json(config, &info_lines, header.as_deref())
 }
 
 fn run_waybar(
@@ -1559,64 +1213,9 @@ fn run_waybar(
     modules: &[Box<dyn Module>],
     configs: &[rustfetch_core::config::ModuleConfig],
 ) {
-    let json_str = generate_waybar_json(config, modules, configs);
-    if !json_str.is_empty() {
-        println!("{json_str}");
-    }
-}
-
-fn extract_percentage(val: &str) -> Option<u8> {
-    if let Some(pos) = val.find('%') {
-        let prefix = &val[..pos];
-        let num_str: String = prefix
-            .chars()
-            .rev()
-            .take_while(|c| c.is_ascii_digit())
-            .collect();
-        let num_str: String = num_str.chars().rev().collect();
-        if let Ok(p) = num_str.parse::<u8>() {
-            return Some(p.min(100));
-        }
-    }
-
-    if let Some((left, right)) = val.split_once('/') {
-        let parse_num = |s: &str| -> Option<f64> {
-            let mut words = s.split_whitespace();
-            let n = words.next()?.parse::<f64>().ok()?;
-            let unit = words.next().map(|u| u.to_lowercase()).unwrap_or_default();
-            let mult = if unit.starts_with("gib") {
-                1024.0 * 1024.0
-            } else if unit.starts_with("mib") {
-                1024.0
-            } else if unit.starts_with("tib") {
-                1024.0 * 1024.0 * 1024.0
-            } else {
-                1.0
-            };
-            Some(n * mult)
-        };
-        if let (Some(used), Some(total)) = (parse_num(left.trim()), parse_num(right.trim())) {
-            if total > 0.0 {
-                let pct = ((used / total) * 100.0).round();
-                return Some((pct as u8).min(100));
-            }
-        }
-    }
-
-    if let Some(pos) = val.find("°C") {
-        let prefix = &val[..pos];
-        let num_str: String = prefix
-            .chars()
-            .rev()
-            .take_while(|c| c.is_ascii_digit() || *c == '.')
-            .collect();
-        let num_str: String = num_str.chars().rev().collect();
-        if let Ok(temp_c) = num_str.parse::<f64>() {
-            return Some((temp_c.round() as u8).min(100));
-        }
-    }
-
-    None
+    let info_lines = gather_info_lines(config, modules, configs, None, None);
+    let header = build_header();
+    json_export::run_waybar(config, &info_lines, header.as_deref());
 }
 
 pub fn render_sparkline(samples: &[u8], colored: bool) -> String {
@@ -1839,10 +1438,6 @@ fn gather_info_lines(
             line
         })
         .collect()
-}
-
-fn build_right_lines(info_lines: &[InfoLine], opts: &layout::RenderOptions) -> Vec<String> {
-    layout::build_right_lines(info_lines, opts)
 }
 
 #[cfg(unix)]
@@ -2146,7 +1741,7 @@ fn run_3d(
     };
 
     let mut info_lines = gather_info_lines(config, modules, configs, None, Some(distro_outer));
-    let mut right_lines = build_right_lines(&info_lines, &render_opts);
+    let mut right_lines = layout::build_right_lines(&info_lines, &render_opts);
 
     let _guard = TermGuard::enter();
     let mut stdout = std::io::stdout();
@@ -2213,13 +1808,13 @@ fn run_3d(
         if (term_cols, term_rows) != prev_term_size {
             prev_term_size = (term_cols, term_rows);
             let _ = stdout.write_all(b"\x1b[2J\x1b[H");
-            right_lines = build_right_lines(&info_lines, &render_opts);
+            right_lines = layout::build_right_lines(&info_lines, &render_opts);
         }
 
         // Receive non-blocking background telemetry updates
         while let Ok(new_info) = telemetry_rx.try_recv() {
             info_lines = new_info;
-            right_lines = build_right_lines(&info_lines, &render_opts);
+            right_lines = layout::build_right_lines(&info_lines, &render_opts);
         }
 
         // Compute layout
@@ -2552,7 +2147,7 @@ fn run_ascii_animation(
     };
 
     let mut info_lines = gather_info_lines(config, modules, configs, None, Some(anim_distro_color));
-    let mut right_lines = build_right_lines(&info_lines, &render_opts);
+    let mut right_lines = layout::build_right_lines(&info_lines, &render_opts);
 
     let _guard = TermGuard::enter();
     let mut stdout = std::io::stdout();
@@ -2583,7 +2178,7 @@ fn run_ascii_animation(
 
         if last_metric_refresh.elapsed() >= Duration::from_millis(1000) {
             info_lines = gather_info_lines(config, modules, configs, None, Some(anim_distro_color));
-            right_lines = build_right_lines(&info_lines, &render_opts);
+            right_lines = layout::build_right_lines(&info_lines, &render_opts);
             last_metric_refresh = Instant::now();
         }
 
@@ -2844,236 +2439,6 @@ fn terminal_supports_kitty() -> bool {
     rustfetch_render::supports_kitty()
 }
 
-pub fn tilde_expand(path: &str) -> std::borrow::Cow<'_, str> {
-    if path == "~" {
-        if let Ok(home) = std::env::var("HOME") {
-            return std::borrow::Cow::Owned(home);
-        }
-    } else if let Some(stripped) = path.strip_prefix("~/") {
-        if let Ok(home) = std::env::var("HOME") {
-            let home_trimmed = home.trim_end_matches('/');
-            return std::borrow::Cow::Owned(format!("{home_trimmed}/{stripped}"));
-        }
-    }
-    std::borrow::Cow::Borrowed(path)
-}
-
-pub fn filter_candidate_images<'a>(files: &'a [String], recent: &[String]) -> Vec<&'a String> {
-    let n = files.len();
-    let exclude_count = match n {
-        0 | 1 => 0,
-        2 => 1,
-        3 => 2,
-        _ => 3,
-    };
-
-    let mut relevant_recent: Vec<&str> = Vec::new();
-    for r in recent {
-        let r_str = r.as_str();
-        let r_name = std::path::Path::new(r_str).file_name();
-        let matches = files.iter().any(|f| {
-            f.as_str() == r_str
-                || (r_name.is_some() && std::path::Path::new(f.as_str()).file_name() == r_name)
-        });
-        if matches && !relevant_recent.contains(&r_str) {
-            relevant_recent.push(r_str);
-        }
-    }
-
-    let excluded: Vec<&str> = relevant_recent.into_iter().take(exclude_count).collect();
-
-    let candidates: Vec<&String> = files
-        .iter()
-        .filter(|f| {
-            let f_str = f.as_str();
-            let f_name = std::path::Path::new(f_str).file_name();
-            !excluded.iter().any(|&ex| {
-                ex == f_str || (f_name.is_some() && std::path::Path::new(ex).file_name() == f_name)
-            })
-        })
-        .collect();
-
-    if candidates.is_empty() {
-        files.iter().collect()
-    } else {
-        candidates
-    }
-}
-
-pub fn update_recent_history(recent: &[String], chosen: &str) -> Vec<String> {
-    let mut updated = Vec::with_capacity(3);
-    updated.push(chosen.to_string());
-    for r in recent {
-        if r != chosen && updated.len() < 3 {
-            updated.push(r.clone());
-        }
-    }
-    updated
-}
-
-fn pick_random_image(dir_path: &str, keep_last: bool) -> Option<String> {
-    use std::fs;
-    let base_dir = std::env::var("XDG_CACHE_HOME")
-        .unwrap_or_else(|_| format!("{}/.cache", std::env::var("HOME").unwrap_or_default()));
-    let cache_dir = std::path::PathBuf::from(base_dir).join("rustfetch");
-    let last_logo_file = cache_dir.join("last_logo");
-    let recent_images_file = cache_dir.join("recent_images");
-
-    let expanded = tilde_expand(dir_path);
-    let expanded_path = std::path::Path::new(expanded.as_ref());
-    if !expanded_path.is_dir() {
-        return None;
-    }
-
-    let entries = fs::read_dir(expanded_path).ok()?;
-    let mut files: Vec<String> = Vec::new();
-    for entry in entries.flatten() {
-        let file_name = entry.file_name();
-        let Some(name_str) = file_name.to_str() else {
-            continue;
-        };
-        let is_image_ext = std::path::Path::new(name_str)
-            .extension()
-            .and_then(|ext| ext.to_str())
-            .map(|ext| {
-                ext.eq_ignore_ascii_case("png")
-                    || ext.eq_ignore_ascii_case("jpg")
-                    || ext.eq_ignore_ascii_case("jpeg")
-                    || ext.eq_ignore_ascii_case("gif")
-                    || ext.eq_ignore_ascii_case("webp")
-            })
-            .unwrap_or(false);
-        if !is_image_ext {
-            continue;
-        }
-        let is_file = entry
-            .file_type()
-            .map(|ft| ft.is_file() || (ft.is_symlink() && entry.path().is_file()))
-            .unwrap_or(false);
-        if is_file {
-            if let Some(s) = entry.path().to_str() {
-                files.push(s.to_string());
-            }
-        }
-    }
-    if files.is_empty() {
-        return None;
-    }
-    files.sort();
-
-    let mut recent: Vec<String> = fs::read_to_string(&recent_images_file)
-        .ok()
-        .map(|content| {
-            content
-                .lines()
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty())
-                .take(3)
-                .collect()
-        })
-        .unwrap_or_default();
-
-    if recent.is_empty() {
-        if let Ok(last) = fs::read_to_string(&last_logo_file) {
-            let trimmed = last.trim();
-            if !trimmed.is_empty() {
-                recent.push(trimmed.to_string());
-            }
-        }
-    }
-
-    if keep_last {
-        if let Some(first) = recent.first() {
-            let first_name = std::path::Path::new(first).file_name();
-            if let Some(matched) = files.iter().find(|f| {
-                f.as_str() == first.as_str()
-                    || (first_name.is_some()
-                        && std::path::Path::new(f.as_str()).file_name() == first_name)
-            }) {
-                return Some(matched.clone());
-            }
-        }
-    }
-
-    let candidates = filter_candidate_images(&files, &recent);
-
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .subsec_nanos();
-    let chosen = candidates[(nanos as usize) % candidates.len()].clone();
-
-    let updated_recent = update_recent_history(&recent, &chosen);
-
-    let _ = fs::create_dir_all(&cache_dir);
-    let _ = fs::write(&last_logo_file, chosen.as_bytes());
-    let _ = fs::write(&recent_images_file, updated_recent.join("\n").as_bytes());
-
-    Some(chosen)
-}
-
-#[allow(clippy::type_complexity)]
-fn get_image_color_and_palette(
-    image_path: &str,
-    auto_color: bool,
-    want_palette: bool,
-) -> (Option<String>, Option<Vec<(u8, u8, u8)>>) {
-    let color_path = format!("{image_path}.color");
-    let mut cached_dom = None;
-    let mut cached_pal = None;
-
-    if let Ok(content) = std::fs::read_to_string(&color_path) {
-        let mut lines = content.lines();
-        if let Some(first) = lines.next().map(str::trim) {
-            if first.starts_with('#') && (first.len() == 7 || first.len() == 4) {
-                cached_dom = Some(first.to_string());
-            }
-        }
-        if let Some(second) = lines.next().map(str::trim) {
-            let parsed: Vec<(u8, u8, u8)> = second
-                .split(',')
-                .filter_map(|s| rustfetch_render::parse_color(s.trim()))
-                .collect();
-            if !parsed.is_empty() {
-                cached_pal = Some(parsed);
-            }
-        }
-    }
-
-    let need_dom = auto_color && cached_dom.is_none();
-    let need_pal = want_palette && cached_pal.is_none();
-
-    if need_dom || need_pal {
-        if let Some((dom, pal)) = rustfetch_render::extract_dominant_and_palette(image_path, 16) {
-            let final_dom = cached_dom.or(Some(dom));
-            let final_pal = cached_pal.or(pal);
-            if let Some(ref d) = final_dom {
-                let mut out = d.clone();
-                if let Some(ref p) = final_pal {
-                    let pal_hex: Vec<String> = p
-                        .iter()
-                        .map(|(r, g, b)| format!("#{:02x}{:02x}{:02x}", r, g, b))
-                        .collect();
-                    if !pal_hex.is_empty() {
-                        out.push('\n');
-                        out.push_str(&pal_hex.join(","));
-                    }
-                }
-                let _ = std::fs::write(&color_path, out.as_bytes());
-            }
-            return (
-                if auto_color { final_dom } else { None },
-                if want_palette { final_pal } else { None },
-            );
-        }
-    }
-
-    (
-        if auto_color { cached_dom } else { None },
-        if want_palette { cached_pal } else { None },
-    )
-}
-
 fn run_benchmark(modules: &[Box<dyn Module>]) {
     use std::time::Instant;
 
@@ -3124,222 +2489,6 @@ fn run_benchmark(modules: &[Box<dyn Module>]) {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_strip_rustfetch_hook_old_bash() {
-        let input = r#"# .bashrc
-export PATH="$HOME/.local/bin:$PATH"
-
-# RustFetch — Automatic responsive redraw for tiling WMs (MangoWM, Hyprland, Sway, etc.)
-if [[ $- == *i* ]]; then
-    _rustfetch_last_size=""
-    _rustfetch_on_resize() {
-        local cur_size
-        cur_size="$(tput cols 2>/dev/null)x$(tput lines 2>/dev/null)"
-        if [ -n "$cur_size" ] && [ "$cur_size" != "$_rustfetch_last_size" ]; then
-            _rustfetch_last_size="$cur_size"
-            if [ -z "$READLINE_LINE" ]; then
-                clear
-                rustfetch
-            fi
-        fi
-    }
-    trap '_rustfetch_on_resize' WINCH
-    _rustfetch_last_size="$(tput cols 2>/dev/null)x$(tput lines 2>/dev/null)"
-    rustfetch
-fi
-
-alias ll='ls -la'
-"#;
-
-        let cleaned = strip_rustfetch_hook(input);
-        assert!(!cleaned.contains("_rustfetch"));
-        assert!(!cleaned.contains("WINCH"));
-        assert!(!cleaned.contains("clear"));
-        assert!(cleaned.contains(r#"export PATH="$HOME/.local/bin:$PATH""#));
-        assert!(cleaned.contains("alias ll='ls -la'"));
-    }
-
-    #[test]
-    fn test_strip_rustfetch_hook_new_bash() {
-        let input = r#"# .bashrc
-export PATH="$HOME/.local/bin:$PATH"
-
-# RustFetch — Shell startup integration
-if [[ $- == *i* ]]; then
-    rustfetch
-fi
-
-alias ll='ls -la'
-"#;
-
-        let cleaned = strip_rustfetch_hook(input);
-        assert!(!cleaned.contains("RustFetch"));
-        assert!(cleaned.contains(r#"export PATH="$HOME/.local/bin:$PATH""#));
-        assert!(cleaned.contains("alias ll='ls -la'"));
-    }
-
-    #[test]
-    fn test_strip_rustfetch_hook_zsh_and_fish() {
-        let zsh_input = r#"# RustFetch — Automatic responsive redraw for tiling WMs (MangoWM, Hyprland, Sway, etc.)
-if [[ -o interactive ]]; then
-    _rustfetch_last_size=""
-    TRAPWINCH() {
-        local cur_size="${COLUMNS}x${LINES}"
-        if [[ -n "$cur_size" && "$cur_size" != "$_rustfetch_last_size" ]]; then
-            _rustfetch_last_size="$cur_size"
-            if [[ -z "$BUFFER" ]]; then
-                clear
-                rustfetch
-                zle && zle reset-prompt 2>/dev/null
-            fi
-        fi
-    }
-    _rustfetch_last_size="${COLUMNS}x${LINES}"
-    rustfetch
-fi
-"#;
-        let cleaned_zsh = strip_rustfetch_hook(zsh_input);
-        assert!(cleaned_zsh.trim().is_empty());
-
-        let fish_input = r#"# RustFetch — Automatic responsive redraw for tiling WMs (MangoWM, Hyprland, Sway, etc.)
-if status is-interactive
-    set -g _rustfetch_last_size ""
-    function _rustfetch_on_resize --on-signal WINCH
-        set -l cur_size (tput cols 2>/dev/null)x(tput lines 2>/dev/null)
-        if test -n "$cur_size" -a "$cur_size" != "$_rustfetch_last_size"
-            set -g _rustfetch_last_size "$cur_size"
-            if test -z (commandline)
-                clear
-                rustfetch
-                commandline -f repaint 2>/dev/null
-            end
-        end
-    end
-    set -g _rustfetch_last_size (tput cols 2>/dev/null)x(tput lines 2>/dev/null)
-    rustfetch
-end
-"#;
-        let cleaned_fish = strip_rustfetch_hook(fish_input);
-        assert!(cleaned_fish.trim().is_empty());
-    }
-
-    #[test]
-    fn test_tilde_expand() {
-        assert_eq!(tilde_expand("foo/bar"), "foo/bar");
-        assert_eq!(tilde_expand("/etc/os-release"), "/etc/os-release");
-        if let Ok(home) = std::env::var("HOME") {
-            let trimmed = home.trim_end_matches('/');
-            assert_eq!(tilde_expand("~"), home);
-            assert_eq!(tilde_expand("~/foo/bar"), format!("{trimmed}/foo/bar"));
-        }
-    }
-
-    #[test]
-    fn test_pick_random_image() {
-        let tmp = std::env::temp_dir().join(format!("rustfetch_img_test_{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&tmp);
-        std::fs::create_dir_all(&tmp).unwrap();
-
-        // Non-images that should be ignored:
-        std::fs::write(tmp.join("png"), b"not an image").unwrap();
-        std::fs::write(tmp.join(".png"), b"hidden file").unwrap();
-        std::fs::write(tmp.join("readme.txt"), b"text").unwrap();
-        assert!(pick_random_image(tmp.to_str().unwrap(), false).is_none());
-
-        // Valid image
-        std::fs::write(tmp.join("logo.png"), b"pngdata").unwrap();
-        let picked = pick_random_image(tmp.to_str().unwrap(), false);
-        assert!(picked.is_some());
-        assert!(picked.unwrap().ends_with("logo.png"));
-
-        let _ = std::fs::remove_dir_all(&tmp);
-    }
-
-    #[test]
-    fn test_candidate_filtering_rules() {
-        // N = 1: picks the single image even if it was recently used
-        let files_n1 = vec!["img1.png".to_string()];
-        let recent_n1 = vec!["img1.png".to_string()];
-        let c_n1 = filter_candidate_images(&files_n1, &recent_n1);
-        assert_eq!(c_n1, vec![&files_n1[0]]);
-
-        // N = 2: excludes the last 1 used image, picks the other
-        let files_n2 = vec!["img1.png".to_string(), "img2.png".to_string()];
-        let recent_n2_a = vec!["img1.png".to_string()];
-        let c_n2_a = filter_candidate_images(&files_n2, &recent_n2_a);
-        assert_eq!(c_n2_a, vec![&files_n2[1]]); // picks img2
-
-        let recent_n2_b = vec!["img2.png".to_string(), "img1.png".to_string()];
-        let c_n2_b = filter_candidate_images(&files_n2, &recent_n2_b);
-        assert_eq!(c_n2_b, vec![&files_n2[0]]); // picks img1
-
-        // N = 3: excludes the last 2 used images, picks the 3rd one
-        let files_n3 = vec![
-            "img1.png".to_string(),
-            "img2.png".to_string(),
-            "img3.png".to_string(),
-        ];
-        let recent_n3 = vec!["img2.png".to_string(), "img1.png".to_string()];
-        let c_n3 = filter_candidate_images(&files_n3, &recent_n3);
-        assert_eq!(c_n3, vec![&files_n3[2]]); // picks img3
-
-        let recent_n3_cycle = vec![
-            "img3.png".to_string(),
-            "img2.png".to_string(),
-            "img1.png".to_string(),
-        ];
-        let c_n3_cycle = filter_candidate_images(&files_n3, &recent_n3_cycle);
-        assert_eq!(c_n3_cycle, vec![&files_n3[0]]); // picks img1
-
-        // N = 4+: excludes the last 3 used images, candidates are the remaining images
-        let files_n5 = vec![
-            "img1.png".to_string(),
-            "img2.png".to_string(),
-            "img3.png".to_string(),
-            "img4.png".to_string(),
-            "img5.png".to_string(),
-        ];
-        let recent_n5 = vec![
-            "img3.png".to_string(),
-            "img2.png".to_string(),
-            "img1.png".to_string(),
-        ];
-        let c_n5 = filter_candidate_images(&files_n5, &recent_n5);
-        assert_eq!(c_n5, vec![&files_n5[3], &files_n5[4]]); // only img4 and img5
-        assert!(!c_n5.iter().any(|&c| recent_n5.contains(c)));
-
-        // Foreign / deleted paths in history must not consume exclusion slots
-        let recent_with_deleted = vec![
-            "/deleted/old.png".to_string(),
-            "img2.png".to_string(),
-            "img1.png".to_string(),
-        ];
-        let c_foreign = filter_candidate_images(&files_n3, &recent_with_deleted);
-        assert_eq!(c_foreign, vec![&files_n3[2]]); // correctly excludes img2 and img1, picks img3
-
-        // Duplicate entries in recent history do not burn multiple exclusion slots
-        let recent_dups = vec![
-            "img2.png".to_string(),
-            "img2.png".to_string(),
-            "img1.png".to_string(),
-        ];
-        let c_dups = filter_candidate_images(&files_n3, &recent_dups);
-        assert_eq!(c_dups, vec![&files_n3[2]]); // still excludes img2 and img1
-
-        // History update keeps max 3 entries with chosen at front and deduplicates
-        let h1 = update_recent_history(
-            &["img2.png".to_string(), "img1.png".to_string()],
-            "img3.png",
-        );
-        assert_eq!(h1, vec!["img3.png", "img2.png", "img1.png"]);
-
-        let h2 = update_recent_history(&h1, "img4.png");
-        assert_eq!(h2, vec!["img4.png", "img3.png", "img2.png"]);
-
-        let h3 = update_recent_history(&h2, "img3.png");
-        assert_eq!(h3, vec!["img3.png", "img4.png", "img2.png"]);
-    }
 
     #[test]
     fn test_generate_waybar_json() {

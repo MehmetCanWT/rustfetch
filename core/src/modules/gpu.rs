@@ -105,28 +105,28 @@ impl GpuModule {
     }
 }
 
+fn detect_gpu_with_filter(filter: GpuFilter, label: &'static str) -> Option<Info> {
+    let static_devices = get_or_cache_static_gpus()?;
+    let filtered_devices = filter_gpus(&static_devices, filter);
+    if filtered_devices.is_empty() {
+        return None;
+    }
+
+    let gpus = format_gpu_devices(&filtered_devices);
+    if gpus.is_empty() {
+        None
+    } else {
+        Some(Info::new(label, gpus.join(", ")))
+    }
+}
+
 impl Module for GpuModule {
     fn name(&self) -> &'static str {
         "gpu"
     }
 
     fn detect(&self) -> Option<Info> {
-        let static_devices = get_or_cache_static_gpus()?;
-        if static_devices.is_empty() {
-            return None;
-        }
-
-        let filtered_devices = filter_gpus(&static_devices, self.filter);
-        if filtered_devices.is_empty() {
-            return None;
-        }
-
-        let gpus = format_gpu_devices(&filtered_devices);
-        if gpus.is_empty() {
-            None
-        } else {
-            Some(Info::new("GPU", gpus.join(", ")))
-        }
+        detect_gpu_with_filter(self.filter, "GPU")
     }
 }
 
@@ -139,22 +139,7 @@ impl Module for DgpuModule {
     }
 
     fn detect(&self) -> Option<Info> {
-        let static_devices = get_or_cache_static_gpus()?;
-        if static_devices.is_empty() {
-            return None;
-        }
-
-        let filtered_devices = filter_gpus(&static_devices, GpuFilter::DiscreteOnly);
-        if filtered_devices.is_empty() {
-            return None;
-        }
-
-        let gpus = format_gpu_devices(&filtered_devices);
-        if gpus.is_empty() {
-            None
-        } else {
-            Some(Info::new("dGPU", gpus.join(", ")))
-        }
+        detect_gpu_with_filter(GpuFilter::DiscreteOnly, "dGPU")
     }
 }
 
@@ -167,22 +152,7 @@ impl Module for IgpuModule {
     }
 
     fn detect(&self) -> Option<Info> {
-        let static_devices = get_or_cache_static_gpus()?;
-        if static_devices.is_empty() {
-            return None;
-        }
-
-        let filtered_devices = filter_gpus(&static_devices, GpuFilter::IgpuOnly);
-        if filtered_devices.is_empty() {
-            return None;
-        }
-
-        let gpus = format_gpu_devices(&filtered_devices);
-        if gpus.is_empty() {
-            None
-        } else {
-            Some(Info::new("iGPU", gpus.join(", ")))
-        }
+        detect_gpu_with_filter(GpuFilter::IgpuOnly, "iGPU")
     }
 }
 

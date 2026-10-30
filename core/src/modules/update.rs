@@ -34,7 +34,7 @@ const CAT_BREEDS: &[&str] = &[
 /// Returns the official cat breed codename for a given semantic version.
 pub fn codename_for_version(version: &str) -> &'static str {
     let Some((major, minor, patch)) = parse_semver(version) else {
-        return "Maine Coon";
+        return "Siamese";
     };
     match (major, minor, patch) {
         (0, 1, 0) => "Turkish Van",
@@ -134,12 +134,8 @@ impl Module for Update {
     }
 }
 
-/// Checks whether the system has an active default network gateway routing route.
-/// Takes ~5 microseconds (pure /proc/net/route read, 0 network packets).
-pub fn has_default_gateway() -> bool {
-    let Ok(routes) = std::fs::read_to_string("/proc/net/route") else {
-        return true; // Fall back to true if sysfs is inaccessible
-    };
+/// Checks whether the IPv4 routing table contains a default gateway.
+pub fn parse_has_default_ipv4_route(routes: &str) -> bool {
     for line in routes.lines().skip(1) {
         let mut fields = line.split_whitespace();
         let _iface = fields.next();
@@ -157,6 +153,55 @@ pub fn has_default_gateway() -> bool {
         }
     }
     false
+}
+
+/// Checks whether the IPv6 routing table contains a default gateway (non-loopback ::/0).
+pub fn parse_has_default_ipv6_route(routes_v6: &str) -> bool {
+    for line in routes_v6.lines() {
+        let mut fields = line.split_whitespace();
+        let dest = fields.next();
+        let prefix = fields.next();
+        let _src = fields.next();
+        let _src_prefix = fields.next();
+        let _nexthop = fields.next();
+        let _metric = fields.next();
+        let _ref = fields.next();
+        let _use = fields.next();
+        let _flags = fields.next();
+        let iface = fields.next();
+        if let (Some(dest), Some(prefix)) = (dest, prefix) {
+            if dest == "00000000000000000000000000000000" && prefix == "00" {
+                if let Some(iface) = iface {
+                    if iface != "lo" {
+                        return true;
+                    }
+                } else {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+/// Checks whether the system has an active default network gateway routing route (IPv4 or IPv6).
+/// Takes ~5 microseconds (pure /proc/net read, 0 network packets).
+pub fn has_default_gateway() -> bool {
+    let mut inspected_any = false;
+    if let Ok(routes) = std::fs::read_to_string("/proc/net/route") {
+        inspected_any = true;
+        if parse_has_default_ipv4_route(&routes) {
+            return true;
+        }
+    }
+    if let Ok(routes_v6) = std::fs::read_to_string("/proc/net/ipv6_route") {
+        inspected_any = true;
+        if parse_has_default_ipv6_route(&routes_v6) {
+            return true;
+        }
+    }
+    // Fall back to true if /proc/net is inaccessible (e.g. non-Linux or restricted container)
+    !inspected_any
 }
 
 /// Spawns a detached background process to refresh the update cache without blocking the shell.
@@ -449,5 +494,21 @@ edition = "2021"
         assert_eq!(codename_for_version("0.1.1"), "Turkish Angora");
         assert_eq!(codename_for_version("0.1.2"), "Bengal");
         assert_eq!(codename_for_version("0.1.3"), "Maine Coon");
+        assert_eq!(codename_for_version("0.1.4"), "Siamese");
+    }
+
+    #[test]
+    fn test_parse_default_ipv4_and_ipv6_routes() {
+        let v4_table = "Iface\tDestination\tGateway \tFlags\tRefCnt\tUse\tMetric\tMask\t\tMTU\tWindow\tIRTT\nwlp0s20f3\t00000000\t0101A8C0\t0003\t0\t0\t600\t00000000\t0\t0\t0\n";
+        assert!(parse_has_default_ipv4_route(v4_table));
+
+        let v4_table_no_gw = "Iface\tDestination\tGateway \tFlags\tRefCnt\tUse\tMetric\tMask\t\tMTU\tWindow\tIRTT\nwlp0s20f3\t0001A8C0\t00000000\t0001\t0\t0\t600\t00FFFFFF\t0\t0\t0\n";
+        assert!(!parse_has_default_ipv4_route(v4_table_no_gw));
+
+        let v6_table = "00000000000000000000000000000000 00 00000000000000000000000000000000 00 fe800000000000003e64cffffe7229e7 00000258 00000001 00000000 00000003 eth0\n";
+        assert!(parse_has_default_ipv6_route(v6_table));
+
+        let v6_loopback_only = "00000000000000000000000000000000 00 00000000000000000000000000000000 00 00000000000000000000000000000000 ffffffff 00000001 00000000 00200200 lo\n";
+        assert!(!parse_has_default_ipv6_route(v6_loopback_only));
     }
 }

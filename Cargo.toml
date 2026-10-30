@@ -3,7 +3,7 @@ members = ["core", "render", "cli"]
 resolver = "2"
 
 [workspace.package]
-version = "0.1.3"
+version = "0.1.4"
 authors = ["MehmetCanWT"]
 edition = "2021"
 description = "A blazing-fast, memory-safe system fetch tool."

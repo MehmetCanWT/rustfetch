@@ -18,7 +18,7 @@
         {
           default = pkgs.rustPlatform.buildRustPackage {
             pname = "rustfetch";
-            version = "0.1.2";
+            version = "0.1.4";
             src = ./.;
             cargoLock = {
               lockFile = ./Cargo.lock;

@@ -8,14 +8,24 @@ impl Module for Kernel {
     }
 
     fn detect(&self) -> Option<Info> {
-        let content = read_kernel()?;
-        let version = parse_kernel(&content)?;
+        let version = read_kernel()?;
         Some(Info::new("Kernel", version))
     }
 }
 
 pub fn read_kernel() -> Option<String> {
-    std::fs::read_to_string("/proc/version").ok()
+    if let Ok(content) = std::fs::read_to_string("/proc/version") {
+        if let Some(version) = parse_kernel(&content) {
+            return Some(version);
+        }
+    }
+    if let Ok(content) = std::fs::read_to_string("/proc/sys/kernel/osrelease") {
+        let trimmed = content.trim();
+        if !trimmed.is_empty() {
+            return Some(trimmed.to_string());
+        }
+    }
+    None
 }
 
 pub fn parse_kernel(content: &str) -> Option<String> {

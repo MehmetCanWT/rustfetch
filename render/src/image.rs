@@ -9,13 +9,25 @@ use std::num::NonZeroU32;
 use crate::{kitty, terminal};
 
 pub(crate) fn resize_rgba(
-    raw: Vec<u8>,
+    mut raw: Vec<u8>,
     src_w: u32,
     src_h: u32,
     dst_w: u32,
     dst_h: u32,
     filter: fr::FilterType,
 ) -> Option<Vec<u8>> {
+    // Premultiply alpha before convolution to prevent dark fringes around transparent borders
+    let mut has_transparency = false;
+    for chunk in raw.as_chunks_mut::<4>().0 {
+        let a = chunk[3] as u32;
+        if a < 255 {
+            has_transparency = true;
+            chunk[0] = ((chunk[0] as u32 * a + 127) / 255) as u8;
+            chunk[1] = ((chunk[1] as u32 * a + 127) / 255) as u8;
+            chunk[2] = ((chunk[2] as u32 * a + 127) / 255) as u8;
+        }
+    }
+
     let src_image = Image::from_vec_u8(
         NonZeroU32::new(src_w)?,
         NonZeroU32::new(src_h)?,
@@ -31,7 +43,19 @@ pub(crate) fn resize_rgba(
     fr::Resizer::new(fr::ResizeAlg::Convolution(filter))
         .resize(&src_image.view(), &mut dst_image.view_mut())
         .ok()?;
-    Some(dst_image.into_vec())
+
+    let mut dst_vec = dst_image.into_vec();
+    if has_transparency {
+        for chunk in dst_vec.as_chunks_mut::<4>().0 {
+            let a = chunk[3] as u32;
+            if a > 0 && a < 255 {
+                chunk[0] = (((chunk[0] as u32 * 255 + a / 2) / a).min(255)) as u8;
+                chunk[1] = (((chunk[1] as u32 * 255 + a / 2) / a).min(255)) as u8;
+                chunk[2] = (((chunk[2] as u32 * 255 + a / 2) / a).min(255)) as u8;
+            }
+        }
+    }
+    Some(dst_vec)
 }
 
 pub fn render_ex(
@@ -578,11 +602,11 @@ fn apply_row_background(
     while let Some(ch) = chars.next() {
         if ch == '\x1b' {
             let mut seq = String::from('\x1b');
-            if let Some(&next_ch) = chars.peek() {
-                if next_ch == '[' {
-                    seq.push(chars.next().unwrap());
-                    while let Some(&c) = chars.peek() {
-                        seq.push(chars.next().unwrap());
+            if chars.peek() == Some(&'[') {
+                if let Some(bracket) = chars.next() {
+                    seq.push(bracket);
+                    for c in chars.by_ref() {
+                        seq.push(c);
                         if c.is_ascii_alphabetic() {
                             break;
                         }

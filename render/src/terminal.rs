@@ -1,6 +1,8 @@
 use std::mem;
 
 pub fn get_winsize_cells() -> Option<(u16, u16)> {
+    // SAFETY: TIOCGWINSZ ioctl only queries the terminal emulator window dimensions
+    // and writes to our locally allocated libc::winsize struct.
     unsafe {
         let mut ws: libc::winsize = mem::zeroed();
         if libc::ioctl(libc::STDOUT_FILENO, libc::TIOCGWINSZ, &mut ws) == 0
@@ -14,6 +16,7 @@ pub fn get_winsize_cells() -> Option<(u16, u16)> {
 }
 
 pub fn get_cell_size() -> Option<(u16, u16)> {
+    // SAFETY: TIOCGWINSZ ioctl safely queries the terminal emulator window dimensions in pixels.
     unsafe {
         let mut ws: libc::winsize = mem::zeroed();
         if libc::ioctl(libc::STDOUT_FILENO, libc::TIOCGWINSZ, &mut ws) == 0
@@ -41,18 +44,26 @@ pub fn supports_kitty() -> bool {
     if std::env::var("NO_COLOR").is_ok() || std::env::var("TERM").as_deref() == Ok("dumb") {
         return false;
     }
-    if std::env::var("KITTY_WINDOW_ID").is_ok() || std::env::var("GHOSTTY_RESOURCES_DIR").is_ok() {
+    if std::env::var("KITTY_WINDOW_ID").is_ok()
+        || std::env::var("KITTY_PID").is_ok()
+        || std::env::var("GHOSTTY_RESOURCES_DIR").is_ok()
+        || std::env::var("WEZTERM_PANE").is_ok()
+        || std::env::var("RIO_VERSION").is_ok()
+    {
         return true;
     }
     if let Ok(term) = std::env::var("TERM") {
         let term_lower = term.to_lowercase();
-        if term_lower.contains("kitty") || term_lower.contains("ghostty") {
+        if term_lower.contains("kitty")
+            || term_lower.contains("ghostty")
+            || term_lower.contains("wayst")
+        {
             return true;
         }
     }
     if let Ok(prog) = std::env::var("TERM_PROGRAM") {
         let p = prog.to_lowercase();
-        if p.contains("ghostty") || p.contains("wezterm") {
+        if p.contains("ghostty") || p.contains("wezterm") || p.contains("rio") {
             return true;
         }
     }
@@ -67,12 +78,20 @@ pub fn supports_sixel() -> bool {
     if std::env::var("NO_COLOR").is_ok() || std::env::var("TERM").as_deref() == Ok("dumb") {
         return false;
     }
-    if std::env::var("SIXEL_SUPPORT").is_ok() {
+    if std::env::var("SIXEL_SUPPORT").is_ok()
+        || std::env::var("FOOT_SERVER_PATH").is_ok()
+        || std::env::var("CONTOUR_VERSION").is_ok()
+    {
         return true;
     }
     if let Ok(term) = std::env::var("TERM") {
         let t = term.to_lowercase();
-        if t.contains("foot") || t.contains("mlterm") || t.contains("yaft") || t.contains("sixel") {
+        if t.contains("foot")
+            || t.contains("mlterm")
+            || t.contains("yaft")
+            || t.contains("sixel")
+            || t.contains("chafa")
+        {
             return true;
         }
     }
@@ -97,7 +116,15 @@ pub fn supports_iterm() -> bool {
     if std::env::var("NO_COLOR").is_ok() || std::env::var("TERM").as_deref() == Ok("dumb") {
         return false;
     }
-    if std::env::var("ITERM_SESSION_ID").is_ok() || std::env::var("ITERM_SUPPORT").is_ok() {
+    if std::env::var("ITERM_SESSION_ID").is_ok()
+        || std::env::var("ITERM_SUPPORT").is_ok()
+        || std::env::var("KONSOLE_VERSION").is_ok()
+        || std::env::var("TABBY_CONFIG_DIRECTORY").is_ok()
+        || std::env::var("WEZTERM_PANE").is_ok()
+    {
+        return true;
+    }
+    if std::env::var("LC_TERMINAL").as_deref() == Ok("iTerm2") {
         return true;
     }
     if let Ok(prog) = std::env::var("TERM_PROGRAM") {
@@ -141,18 +168,17 @@ pub fn wrap_tmux_passthrough(seq: &str) -> String {
 }
 
 pub fn wrap_tmux_passthrough_always(seq: &str) -> String {
-    let mut out = Vec::with_capacity(seq.len() + 32);
-    out.extend_from_slice(b"\x1bPtmux;");
-    for &b in seq.as_bytes() {
-        if b == 0x1b {
-            out.extend_from_slice(b"\x1b\x1b");
+    let mut out = String::with_capacity(seq.len() + 32);
+    out.push_str("\x1bPtmux;");
+    for ch in seq.chars() {
+        if ch == '\x1b' {
+            out.push_str("\x1b\x1b");
         } else {
-            out.push(b);
+            out.push(ch);
         }
     }
-    out.extend_from_slice(b"\x1b\\");
-    // SAFETY: Input was valid UTF-8 and we only inserted ASCII escape bytes
-    unsafe { String::from_utf8_unchecked(out) }
+    out.push_str("\x1b\\");
+    out
 }
 
 #[cfg(test)]

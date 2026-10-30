@@ -276,6 +276,16 @@ pub fn run_doctor() {
     println!("────────────────────────────────────────────────────────");
 }
 
+struct TempDirGuard {
+    path: std::path::PathBuf,
+}
+
+impl Drop for TempDirGuard {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.path);
+    }
+}
+
 pub fn build_release_tarball_url(version: &str, arch: &str, is_musl: bool) -> String {
     let ver = version.trim().trim_start_matches(['v', 'V']);
     let libc_tag = if is_musl && arch == "x86_64" {
@@ -286,6 +296,38 @@ pub fn build_release_tarball_url(version: &str, arch: &str, is_musl: bool) -> St
     format!(
         "https://github.com/MehmetCanWT/rustfetch/releases/download/v{ver}/rustfetch-v{ver}-{libc_tag}-{arch}.tar.gz"
     )
+}
+
+pub fn build_release_sums_url(version: &str) -> String {
+    let ver = version.trim().trim_start_matches(['v', 'V']);
+    format!("https://github.com/MehmetCanWT/rustfetch/releases/download/v{ver}/SHA256SUMS.txt")
+}
+
+pub fn release_archive_filename(version: &str, arch: &str, is_musl: bool) -> String {
+    let ver = version.trim().trim_start_matches(['v', 'V']);
+    let libc_tag = if is_musl && arch == "x86_64" {
+        "linux-musl"
+    } else {
+        "linux-gnu"
+    };
+    format!("rustfetch-v{ver}-{libc_tag}-{arch}.tar.gz")
+}
+
+pub fn find_sha256_in_sums(sums_content: &str, target_filename: &str) -> Option<String> {
+    for line in sums_content.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        let mut parts = trimmed.split_whitespace();
+        let hash = parts.next()?;
+        let file_entry = parts.next()?;
+        let clean_entry = file_entry.trim_start_matches('*').trim_start_matches("./");
+        if clean_entry == target_filename && hash.len() == 64 {
+            return Some(hash.to_lowercase());
+        }
+    }
+    None
 }
 
 pub fn run_self_update() {
@@ -323,22 +365,46 @@ pub fn run_self_update() {
         "aarch64" => "aarch64",
         other => {
             eprintln!("Unsupported prebuilt architecture '{other}'. Running source installer...");
-            run_installer_fallback();
+            run_installer_fallback(Some(&latest));
             return;
         }
     };
 
     let is_musl = std::path::Path::new("/etc/alpine-release").exists();
     let url = build_release_tarball_url(&latest, arch, is_musl);
+    let archive_filename = release_archive_filename(&latest, arch, is_musl);
+    let sums_url = build_release_sums_url(&latest);
 
-    let tmp_dir = std::env::temp_dir().join(format!("rustfetch-update-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&tmp_dir);
-    if std::fs::create_dir_all(&tmp_dir).is_err() {
-        eprintln!("Failed to create temporary update directory.");
-        std::process::exit(1);
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::SystemTime::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let tmp_dir =
+        std::env::temp_dir().join(format!("rustfetch-update-{}-{}", std::process::id(), nanos));
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        let mut builder = std::fs::DirBuilder::new();
+        builder.mode(0o700);
+        if let Err(e) = builder.create(&tmp_dir) {
+            eprintln!("Failed to securely create temporary update directory: {e}");
+            std::process::exit(1);
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        if let Err(e) = std::fs::create_dir_all(&tmp_dir) {
+            eprintln!("Failed to create temporary update directory: {e}");
+            std::process::exit(1);
+        }
     }
 
-    let archive_path = tmp_dir.join("rustfetch.tar.gz");
+    let _guard = TempDirGuard {
+        path: tmp_dir.clone(),
+    };
+
+    let archive_path = tmp_dir.join(&archive_filename);
     println!("==> Downloading {url}...");
     let dl_ok = Command::new("curl")
         .args(["-fsSL", &url, "-o"])
@@ -348,10 +414,51 @@ pub fn run_self_update() {
         .unwrap_or(false);
 
     if !dl_ok {
-        let _ = std::fs::remove_dir_all(&tmp_dir);
         println!("==> Prebuilt release archive not found; building latest from source (preserving config.toml)...");
-        run_installer_fallback();
+        run_installer_fallback(Some(&latest));
         return;
+    }
+
+    // Verify cryptographic SHA-256 integrity
+    println!("==> Verifying SHA-256 release integrity...");
+    let sums_output = Command::new("curl")
+        .args([
+            "-fsSL",
+            "--connect-timeout",
+            "4",
+            "--max-time",
+            "8",
+            &sums_url,
+        ])
+        .output();
+
+    if let Ok(sums_res) = sums_output {
+        if sums_res.status.success() {
+            let sums_txt = String::from_utf8_lossy(&sums_res.stdout);
+            if let Some(expected_hash) = find_sha256_in_sums(&sums_txt, &archive_filename) {
+                match rustfetch_core::sha256::sha256_file(&archive_path) {
+                    Ok(computed_hash) => {
+                        if computed_hash.eq_ignore_ascii_case(&expected_hash) {
+                            println!("\x1b[32m✓\x1b[0m SHA-256 verified: {computed_hash}");
+                        } else {
+                            eprintln!("\x1b[31m✗\x1b[0m Security error: SHA-256 checksum mismatch for {archive_filename}!");
+                            eprintln!("  Expected: {expected_hash}");
+                            eprintln!("  Computed: {computed_hash}");
+                            eprintln!("Update aborted to prevent executing untrusted binaries.");
+                            std::process::exit(1);
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("\x1b[31m✗\x1b[0m Failed to compute SHA-256 checksum of downloaded archive: {e}");
+                        std::process::exit(1);
+                    }
+                }
+            } else {
+                println!("\x1b[33m!\x1b[0m Note: {archive_filename} not listed in SHA256SUMS.txt; proceeding with installation.");
+            }
+        } else {
+            println!("\x1b[33m!\x1b[0m Note: Could not fetch SHA256SUMS.txt; proceeding with installation.");
+        }
     }
 
     let extract_ok = Command::new("tar")
@@ -364,7 +471,6 @@ pub fn run_self_update() {
         .unwrap_or(false);
 
     if !extract_ok {
-        let _ = std::fs::remove_dir_all(&tmp_dir);
         eprintln!("Failed to extract downloaded archive.");
         std::process::exit(1);
     }
@@ -384,7 +490,6 @@ pub fn run_self_update() {
         if install_binary_atomic(&bin_src, &dest_rustfetch).is_ok() {
             let _ = install_binary_atomic(&bin_src, &dest_rfetch);
             let _ = Cache::clear_all();
-            let _ = std::fs::remove_dir_all(&tmp_dir);
             println!(
                 "\x1b[32m✓\x1b[0m Successfully updated to {BOLD}RustFetch v{latest} \"{latest_code}\"{RESET} in {}!",
                 target_dir.display()
@@ -393,8 +498,7 @@ pub fn run_self_update() {
         }
     }
 
-    let _ = std::fs::remove_dir_all(&tmp_dir);
-    run_installer_fallback();
+    run_installer_fallback(Some(&latest));
 }
 
 fn install_binary_atomic(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()> {
@@ -423,13 +527,20 @@ fn find_file_named(dir: &std::path::Path, filename: &str) -> Option<std::path::P
     None
 }
 
-fn run_installer_fallback() {
-    let status = Command::new("bash")
-        .args([
-            "-c",
-            "curl -fsSL https://raw.githubusercontent.com/MehmetCanWT/rustfetch/main/install.sh | NONINTERACTIVE=1 bash",
-        ])
-        .status();
+fn run_installer_fallback(latest_version: Option<&str>) {
+    let script_url = if let Some(ver) = latest_version {
+        let clean = ver.trim().trim_start_matches(['v', 'V']);
+        format!("curl -fsSL https://raw.githubusercontent.com/MehmetCanWT/rustfetch/v{clean}/install.sh 2>/dev/null || curl -fsSL https://raw.githubusercontent.com/MehmetCanWT/rustfetch/main/install.sh")
+    } else {
+        "curl -fsSL https://raw.githubusercontent.com/MehmetCanWT/rustfetch/main/install.sh"
+            .to_string()
+    };
+    let mut cmd = Command::new("bash");
+    cmd.args(["-c", &format!("{script_url} | NONINTERACTIVE=1 bash")]);
+    if let Some(ver) = latest_version {
+        cmd.env("RUSTFETCH_VERSION", ver);
+    }
+    let status = cmd.status();
     let _ = Cache::clear_all();
     if status.map(|s| s.success()).unwrap_or(false) {
         println!("\x1b[32m✓\x1b[0m Update completed! Your existing config.toml was preserved.");
@@ -714,6 +825,37 @@ mod tests {
             build_release_tarball_url("0.2.0", "aarch64", false),
             "https://github.com/MehmetCanWT/rustfetch/releases/download/v0.2.0/rustfetch-v0.2.0-linux-gnu-aarch64.tar.gz"
         );
+        assert_eq!(
+            build_release_sums_url("0.2.0"),
+            "https://github.com/MehmetCanWT/rustfetch/releases/download/v0.2.0/SHA256SUMS.txt"
+        );
+        assert_eq!(
+            release_archive_filename("0.2.0", "x86_64", false),
+            "rustfetch-v0.2.0-linux-gnu-x86_64.tar.gz"
+        );
+        assert_eq!(
+            release_archive_filename("v0.1.3", "x86_64", true),
+            "rustfetch-v0.1.3-linux-musl-x86_64.tar.gz"
+        );
+    }
+
+    #[test]
+    fn test_find_sha256_in_sums() {
+        let sample_sums = r#"
+# Release Checksums
+cfd385a2096a224b54b600aa7e282f18835bacb521c8d0905924a317da083964  rustfetch-0.1.3-1.fedora.x86_64.rpm
+c4aeaa143ce6999ebab584945f67918f9f051f5b4ddb6dba47d4d6c761e8f172  rustfetch-v0.1.3-linux-gnu-x86_64.tar.gz
+25b80e063e52165eeaab542bad9917d974d267a66ed0483e794bce5532e30a25 *./rustfetch-v0.1.3-linux-musl-x86_64.tar.gz
+"#;
+        assert_eq!(
+            find_sha256_in_sums(sample_sums, "rustfetch-v0.1.3-linux-gnu-x86_64.tar.gz"),
+            Some("c4aeaa143ce6999ebab584945f67918f9f051f5b4ddb6dba47d4d6c761e8f172".to_string())
+        );
+        assert_eq!(
+            find_sha256_in_sums(sample_sums, "rustfetch-v0.1.3-linux-musl-x86_64.tar.gz"),
+            Some("25b80e063e52165eeaab542bad9917d974d267a66ed0483e794bce5532e30a25".to_string())
+        );
+        assert_eq!(find_sha256_in_sums(sample_sums, "nonexistent.tar.gz"), None);
     }
 
     #[test]

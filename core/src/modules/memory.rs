@@ -60,12 +60,18 @@ pub fn parse_meminfo(content: &str) -> Option<String> {
 fn parse_meminfo_with_arc(content: &str, zfs_arc_kb: u64) -> Option<String> {
     let mut mem_total = None;
     let mut mem_available = None;
+    let mut mem_free = None;
+    let mut buffers = None;
+    let mut cached = None;
 
     for line in content.lines() {
         if let Some((key, rest)) = line.split_once(':') {
             match key.trim() {
                 "MemTotal" => mem_total = parse_kb_line(rest),
                 "MemAvailable" => mem_available = parse_kb_line(rest),
+                "MemFree" => mem_free = parse_kb_line(rest),
+                "Buffers" => buffers = parse_kb_line(rest),
+                "Cached" => cached = parse_kb_line(rest),
                 _ => {}
             }
             if mem_total.is_some() && mem_available.is_some() {
@@ -75,7 +81,10 @@ fn parse_meminfo_with_arc(content: &str, zfs_arc_kb: u64) -> Option<String> {
     }
 
     let total = mem_total?;
-    let available = mem_available?;
+    let available = mem_available.or_else(|| {
+        let free = mem_free?;
+        Some(free + buffers.unwrap_or(0) + cached.unwrap_or(0))
+    })?;
     let used = total.checked_sub(available)?.saturating_sub(zfs_arc_kb);
 
     Some(format!("{} / {}", format_kb(used), format_kb(total)))
@@ -135,6 +144,14 @@ SecPageTables:      2056 kB
         assert_eq!(format_kb(524288), "512.0 MiB");
         assert_eq!(format_kb(1024), "1.0 MiB");
         assert_eq!(format_kb(0), "0.0 MiB");
+    }
+
+    #[test]
+    fn test_parse_meminfo_without_memavailable() {
+        let sample =
+            "MemTotal: 4194304 kB\nMemFree: 1048576 kB\nBuffers: 524288 kB\nCached: 524288 kB\n";
+        // available = 1048576 + 524288 + 524288 = 2097152 kB (2.0 GiB), used = 2097152 kB (2.0 GiB)
+        assert_eq!(parse_meminfo(sample), Some("2.0 GiB / 4.0 GiB".to_string()));
     }
 
     #[test]

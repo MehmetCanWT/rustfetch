@@ -40,6 +40,10 @@ research/
 *.patch
 out.txt
 
+# Python
+__pycache__/
+*.pyc
+
 # Archives, packages and checksums
 *.tar.gz
 *.tar.xz

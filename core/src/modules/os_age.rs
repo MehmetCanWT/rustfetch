@@ -80,12 +80,18 @@ pub fn detect_os_birth_timestamp() -> Option<u64> {
         return oldest;
     }
 
-    // Fallback to mtime of /etc/machine-id if statx btime is unsupported
-    if let Ok(meta) = std::fs::metadata("/etc/machine-id") {
-        if let Ok(modified) = meta.modified() {
-            if let Ok(dur) = modified.duration_since(UNIX_EPOCH) {
-                if dur.as_secs() > 946_684_800 {
-                    return Some(dur.as_secs());
+    // Fallback to mtime of system files if statx btime is unsupported
+    for fallback in [
+        "/etc/machine-id",
+        "/var/lib/dbus/machine-id",
+        "/etc/os-release",
+    ] {
+        if let Ok(meta) = std::fs::metadata(fallback) {
+            if let Ok(modified) = meta.modified() {
+                if let Ok(dur) = modified.duration_since(UNIX_EPOCH) {
+                    if dur.as_secs() > 946_684_800 {
+                        return Some(dur.as_secs());
+                    }
                 }
             }
         }
